@@ -70,7 +70,9 @@ class KubeLookout:
                 self.slack_key)
         if message_id is None:
             response = self.slack_client.chat_postMessage(channel=channel,
-                                                          blocks=blocks)
+                                                          blocks=blocks,
+                                                          icon_emoji=':kubernetes:',
+                                                          unfurl_links='false')
             return response.data['ts'], response.data['channel']
         response = self.slack_client.chat_update(
             channel=channel,
@@ -178,8 +180,10 @@ class KubeLookout:
         # update the image to reflect that
         if deployment.status.conditions[-1].type == "Progressing" and \
             deployment.status.conditions[-1].status == "False":
-            block[1]['accessory'][
-                'image_url'] = self.warning_image
+            block[1]['accessory']['image_url'] = self.warning_image
+            block[0]['text']['text'] = f"*{self.gcp_project} deployment " \
+                f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
+                f" is failing: {deployment.status.conditions[-1].message}*"
         # when rollout is complete, update our image
         if rollout_complete:
             block[1]['accessory'][
