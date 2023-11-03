@@ -1,4 +1,4 @@
-apiVersion: extensions/v1beta1 # for versions before 1.8.0 use apps/v1beta1
+apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kube-lookout
@@ -22,7 +22,7 @@ spec:
       serviceAccount: kube-lookout
       containers:
       - name: kube-lookout
-        image: davidjmarkey/kube-lookout:0.2
+        image: gcr.io/rl-build-services-dev/kube-lookout
         imagePullPolicy: Always
         env:
         - name: SLACK_TOKEN

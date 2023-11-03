@@ -15,7 +15,7 @@ metadata:
     k8s-app: kube-lookout
 rules:
 - apiGroups:
-  - extensions
+  - apps
   resources:
   - deployments
   verbs:

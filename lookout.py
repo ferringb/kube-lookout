@@ -124,7 +124,7 @@ class KubeLookout:
                 self.core.list_deployment_for_all_namespaces,
                 resource_version=resource_version
             )
-            print("Waiting for deployment events to come in..")
+            print("Watching for deployment events")
             for event in stream:
                 deployment = event['object']
                 self._handle_event(deployment)
@@ -141,12 +141,22 @@ class KubeLookout:
             message += f"Container {container.name} has image " \
                 f"_ {container.image} _\n"
         message += "\n"
-        message += f"{deployment.status.updated_replicas} replicas " \
+
+        # this math assumes a certain deployment logic -- spin up some new replicas before
+        # spinning down the old -- but it's the logic we usually use
+        unavailable = 0 if str(deployment.status.unavailable_replicas) == 'None' else deployment.status.unavailable_replicas
+        updated = 0 if str(deployment.status.updated_replicas) == 'None' else deployment.status.updated_replicas
+        print(deployment.metadata.namespace + "/" + deployment.metadata.name + \
+              " unavailable: " + str(unavailable) + \
+              " updated: " + str(updated))
+        live_updates = updated - unavailable
+    
+        message += f"{live_updates} replicas " \
             f"updated out of " \
             f"{deployment.spec.replicas}, {deployment.status.ready_replicas}" \
             f" ready.\n\n"
         message += _generate_progress_bar(
-            deployment.status.updated_replicas, deployment.spec.replicas)
+            live_updates, deployment.spec.replicas)
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
@@ -216,7 +226,7 @@ if __name__ == "__main__":
                                   "commons/thumb/f/fb/Yes_check.svg/"
                                   "200px-Yes_check.svg.png")
     env_slack_token = os.environ["SLACK_TOKEN"]
-    env_slack_channel = os.environ.get("SLACK_CHANNEL", "#general")
+    env_slack_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
     env_cluster_name = os.environ.get("CLUSTER_NAME", "Kubernetes Cluster")
     kube_deploy_watch = KubeLookout(env_warning_image,
                                     env_progress_image,

@@ -19,7 +19,7 @@ Check deploy/* for example manifests.
 The following ENV variables are used:
 
 1. SLACK_TOKEN - A Slack Bot User OAuth Access Token - mandatory
-2. SLACK_CHANNEL - Slack channel, defaults to "#general"
+2. SLACK_CHANNEL - Slack channel, defaults to "#robot_dreams"
 3. CLUSTER_NAME - this is prefixed for most messages on slack, defaults to "Kubernetes Cluster"
 4. PROGRESS_IMAGE, OK_IMAGE, WARNING_IMAGE - the URLs of images used for the slack notifications. Defaults to kinda ugly creative commons images, but does the job. (dont use SVGs I learned.)
 
@@ -31,3 +31,9 @@ The following ENV variables are used:
 ![Rollout Slack Notification](images/example2.png)
 ## Degraded deployment
 ![Degraded Slack Notification](images/example1.png)
+
+## Uninstalling
+kubectl delete serviceaccount/kube-lookout -n kube-system
+kubectl delete clusterrole.rbac.authorization.k8s.io/kube-lookout -n kube-system
+kubectl delete clusterrolebinding.rbac.authorization.k8s.io/kube-lookout -n kube-system
+kubectl delete deployment.apps/kube-lookout -n kube-system
