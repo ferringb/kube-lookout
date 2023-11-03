@@ -41,7 +41,8 @@ class KubeLookout:
     ]
 
     def __init__(self, warning_image, progress_image, ok_image,
-                 slack_key, slack_channel, cluster_name):
+                 slack_key, slack_channel, 
+                 cluster_name, gcp_region, gcp_project):
         super().__init__()
         self.warning_image = warning_image
         self.ok_image = ok_image
@@ -50,6 +51,8 @@ class KubeLookout:
         self.slack_key = slack_key
         self.slack_channel = slack_channel
         self.cluster_name = cluster_name
+        self.gcp_region = gcp_region
+        self.gcp_project = gcp_project
         self.rollouts = {}
         self.degraded = set()
 
@@ -126,6 +129,7 @@ class KubeLookout:
             )
             print("Watching for deployment events")
             for event in stream:
+                # print("Event: %s %s" % (event['type'], event['object'].metadata.name))
                 deployment = event['object']
                 self._handle_event(deployment)
 
@@ -133,13 +137,14 @@ class KubeLookout:
                                            rollout_complete=False):
 
         block = copy(self.template)
-        header = f"*{self.cluster_name} deployment " \
+        header = f"*{self.gcp_project} deployment " \
             f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
             f" is rolling out an update.*"
         message = ''
         for container in deployment.spec.template.spec.containers:
             message += f"Container {container.name} has image " \
-                f"_ {container.image} _\n"
+                f"_ {container.image} _" \
+                f"_ https://console.cloud.google.com/kubernetes/deployment/{self.gcp_region}/{self.cluster_name}/{deployment.metadata.namespace}/{deployment.metadata.name}/overview?project={self.gcp_project} _\n"
         message += "\n"
 
         # this math assumes a certain deployment logic -- spin up some new replicas before
@@ -149,7 +154,15 @@ class KubeLookout:
         print(deployment.metadata.namespace + "/" + deployment.metadata.name + \
               " unavailable: " + str(unavailable) + \
               " updated: " + str(updated))
-        live_updates = updated - unavailable
+        for condition in deployment.status.conditions:
+            print("%s %s/%s %s=%s (%s)" % (condition.last_update_time,
+                                           deployment.metadata.namespace,
+                                           deployment.metadata.name,
+                                           condition.type,
+                                           condition.status,
+                                           condition.message))
+            
+        live_updates = 0 if (updated < unavailable) else updated - unavailable
     
         message += f"{live_updates} replicas " \
             f"updated out of " \
@@ -161,6 +174,13 @@ class KubeLookout:
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.progress_image
+        # if the deployment status reflects that it is no longer progressing,
+        # update the image to reflect that
+        if deployment.status.conditions[-1].type == "Progressing" and \
+            deployment.status.conditions[-1].status == "False":
+            block[1]['accessory'][
+                'image_url'] = self.warning_image
+        # when rollout is complete, update our image
         if rollout_complete:
             block[1]['accessory'][
                 'image_url'] = self.ok_image
@@ -170,13 +190,14 @@ class KubeLookout:
 
         block = copy(self.template)
 
-        header = f"*{self.cluster_name} deployment " \
+        header = f"*{self.gcp_project} deployment " \
             f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
             f" has become degraded.*"
 
+        ready_replicas = 0 if deployment.status.ready_replicas == 'None' else deployment.status.ready_replicas
         message = f"Deployment " \
             f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
-            f" has {deployment.status.ready_replicas} ready replicas " \
+            f" has {ready_replicas} ready replicas " \
             f"when it should have {deployment.spec.replicas}.\n"
 
         message += _generate_progress_bar(deployment.status.ready_replicas,
@@ -192,7 +213,7 @@ class KubeLookout:
     def _generate_deployment_not_degraded_block(self, deployment):
         block = copy(self.template)
 
-        header = f"*{self.cluster_name} deployment " \
+        header = f"*{self.gcp_project} deployment " \
             f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
             f" is no longer in a degraded state.*"
 
@@ -214,23 +235,21 @@ class KubeLookout:
 
 
 if __name__ == "__main__":
-    env_warning_image = os.environ.get(
-        "WARNING_IMAGE",
-        "https://upload.wikimedia.org/wikipedia/"
-        "commons/thumb/6/6e/Dialog-warning.svg/"
-        "200px-Dialog-warning.svg.png")
+    env_warning_image = os.environ.get("WARNING_IMAGE",
+                                       "https://www.rocketlawyer.com/images/ops/warning.png")
     env_progress_image = os.environ.get("PROGRESS_IMAGE",
-                                        "https://i.gifer.com/80ZN.gif")
+                                        "https://www.rocketlawyer.com/images/ops/progress.gif")
     env_ok_image = os.environ.get("OK_IMAGE",
-                                  "https://upload.wikimedia.org/wikipedia/"
-                                  "commons/thumb/f/fb/Yes_check.svg/"
-                                  "200px-Yes_check.svg.png")
+                                  "https://www.rocketlawyer.com/images/ops/ok.png")
     env_slack_token = os.environ["SLACK_TOKEN"]
     env_slack_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
-    env_cluster_name = os.environ.get("CLUSTER_NAME", "Kubernetes Cluster")
+    env_cluster_name = os.environ.get("CLUSTER_NAME", "kubernetes")
+    env_gcp_region = os.environ.get("GCP_REGION", "us-west1")
+    env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
     kube_deploy_watch = KubeLookout(env_warning_image,
                                     env_progress_image,
                                     env_ok_image, env_slack_token,
-                                    env_slack_channel, env_cluster_name)
+                                    env_slack_channel, env_cluster_name,
+                                    env_gcp_region, env_gcp_project)
 
     kube_deploy_watch.main_loop()

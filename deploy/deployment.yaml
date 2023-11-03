@@ -27,3 +27,9 @@ spec:
         env:
         - name: SLACK_TOKEN
           value: "insert token here"
+        - name: GCP_REGION
+          value: "us-west1"
+        - name: GCP_PROJECT
+          value: "rl-us-dev39"
+        - name: CLUSTER_NAME
+          value: "dev39-rl-us-dev39"
