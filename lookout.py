@@ -81,6 +81,8 @@ class KubeLookout:
 
     def _handle_deployment_change(self, deployment):
         metadata = deployment.metadata
+        if (metadata.namespace == 'kube-system'):
+            return
         deployment_key = f"{metadata.namespace}/{metadata.name}"
 
         ready_replicas = 0
