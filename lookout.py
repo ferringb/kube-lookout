@@ -4,7 +4,6 @@ from copy import copy
 from kubernetes import client, config, watch
 import slack
 
-
 def _generate_progress_bar(position, max_value):
     if position is None:
         position = 0
