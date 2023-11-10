@@ -108,15 +108,19 @@ class KubeLookout:
             if rollout_complete:
                 self.rollouts.pop(deployment_key)
         elif ready_replicas < deployment.spec.replicas:
-            blocks = self._generate_deployment_degraded_block(deployment)
-            self._send_slack_block(blocks, self.slack_channel)
-            self.degraded.add(deployment_key)
+            print(f"Detected degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
+                  f" {ready_replicas} ready out of {deployment.spec.replicas}"
+            # blocks = self._generate_deployment_degraded_block(deployment)
+            # self._send_slack_block(blocks, self.slack_channel)
+            # self.degraded.add(deployment_key)
 
         elif (deployment_key in self.degraded and
               ready_replicas >= deployment.spec.replicas):
-            self.degraded.remove(deployment_key)
-            blocks = self._generate_deployment_not_degraded_block(deployment)
-            self._send_slack_block(blocks, self.slack_channel)
+            print(f"Recovered degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
+                  f" {ready_replicas} ready out of {deployment.spec.replicas}"
+            # self.degraded.remove(deployment_key)
+            # blocks = self._generate_deployment_not_degraded_block(deployment)
+            # self._send_slack_block(blocks, self.slack_channel)
 
     def _handle_event(self, deployment):
         self._handle_deployment_change(deployment)
