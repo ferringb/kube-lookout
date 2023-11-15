@@ -80,6 +80,7 @@ class KubeLookout:
 
     def _handle_deployment_change(self, deployment):
         metadata = deployment.metadata
+        # we are not going to concern ourselves with changes to Kubernetes system stuff
         if (metadata.namespace == 'kube-system'):
             return
         deployment_key = f"{metadata.namespace}/{metadata.name}"
@@ -107,14 +108,15 @@ class KubeLookout:
 
             if rollout_complete:
                 self.rollouts.pop(deployment_key)
-        elif ready_replicas < deployment.spec.replicas:
+
+        elif (ready_replicas < deployment.spec.replicas):
             print(f"Detected degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}"
             # blocks = self._generate_deployment_degraded_block(deployment)
             # self._send_slack_block(blocks, self.slack_channel)
             # self.degraded.add(deployment_key)
 
-        elif (deployment_key in self.degraded and
+        elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
             print(f"Recovered degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}"
