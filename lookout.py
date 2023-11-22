@@ -139,12 +139,12 @@ class KubeLookout:
     def _update_deployment_thread(self):
         if len(self.rollouts) == 0:
             blocks = self._generate_deployment_thread_block("complete")
-            resp = self._send_slack_block(blocks, self.slack_channel)
+            resp = self._send_slack_block(blocks, self.slack_channel, message_id=self.deployment_thread)
             self.deployment_thread = None
             self.deployment_count = 0
         else:
             blocks = self._generate_deployment_thread_block()
-            resp = self._send_slack_block(blocks, self.slack_channel)
+            resp = self._send_slack_block(blocks, self.slack_channel, message_id=self.deployment_thread)
 
     def _handle_event(self, deployment):
         self._setup_deployment_thread()
@@ -279,7 +279,10 @@ class KubeLookout:
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
-        block[1]['accessory']['image_url'] = self.progress_image
+        if status == "complete":
+            block[1]['accessory']['image_url'] = self.ok_image
+        else:
+            block[1]['accessory']['image_url'] = self.progress_image
 
         return block
 
