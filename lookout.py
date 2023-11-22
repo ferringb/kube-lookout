@@ -52,6 +52,8 @@ class KubeLookout:
         self.cluster_name = cluster_name
         self.gcp_region = gcp_region
         self.gcp_project = gcp_project
+        self.deployment_thread = None
+        self.deployment_count = 0
         self.rollouts = {}
         self.degraded = set()
 
@@ -63,7 +65,7 @@ class KubeLookout:
         api_client = client.api_client.ApiClient()
         self.core = client.AppsV1Api(api_client)
 
-    def _send_slack_block(self, blocks, channel, message_id=None):
+    def _send_slack_block(self, blocks, channel, message_id=None, thread_ts=None):
         if self.slack_client is None:
             self.slack_client = slack.WebClient(
                 self.slack_key)
@@ -71,10 +73,12 @@ class KubeLookout:
             response = self.slack_client.chat_postMessage(channel=channel,
                                                           blocks=blocks,
                                                           icon_emoji=':kubernetes:',
+                                                          thread_ts=thread_ts,
                                                           unfurl_links='false')
             return response.data['ts'], response.data['channel']
         response = self.slack_client.chat_update(
             channel=channel,
+            thread_ts=thread_ts,
             ts=message_id, blocks=blocks)
         return response.data['ts'], response.data['channel']
 
@@ -92,8 +96,9 @@ class KubeLookout:
         if deployment_key not in self.rollouts and \
                 deployment.status.updated_replicas is None:
             blocks = self._generate_deployment_rollout_block(deployment)
-            resp = self._send_slack_block(blocks, self.slack_channel)
+            resp = self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread)
             self.rollouts[deployment_key] = resp
+            self.deployment_count += 1
 
         elif deployment_key in self.rollouts:
             rollout_complete = (
@@ -104,7 +109,8 @@ class KubeLookout:
                                                              rollout_complete)
             self.rollouts[deployment_key] = self._send_slack_block(
                 channel=self.rollouts[deployment_key][1],
-                message_id=self.rollouts[deployment_key][0], blocks=blocks)
+                message_id=self.rollouts[deployment_key][0], blocks=blocks,
+                thread_ts=self.deployment_thread)
 
             if rollout_complete:
                 self.rollouts.pop(deployment_key)
@@ -124,8 +130,26 @@ class KubeLookout:
             # blocks = self._generate_deployment_not_degraded_block(deployment)
             # self._send_slack_block(blocks, self.slack_channel)
 
+    def _setup_deployment_thread(self):
+        if self.deployment_thread is None:
+            blocks = self._generate_deployment_thread_block()
+            resp = self._send_slack_block(blocks, self.slack_channel)
+            self.deployment_thread = resp.data['ts']
+
+    def _update_deployment_thread(self):
+        if len(self.rollouts) is 0:
+            blocks = self._generate_deployment_thread_block("complete")
+            resp = self._send_slack_block(blocks, self.slack_channel)
+            self.deployment_thread = None
+            self.deployment_count = 0
+        else:
+            blocks = self._generate_deployment_thread_block()
+            resp = self._send_slack_block(blocks, self.slack_channel)
+
     def _handle_event(self, deployment):
+        self._setup_deployment_thread()
         self._handle_deployment_change(deployment)
+        self._update_deployment_thread()
 
     def main_loop(self):
         while True:
@@ -244,6 +268,20 @@ class KubeLookout:
 
         return block
 
+    def _generate_deployment_thread_block(self, status="in progress"):
+
+        block = copy(self.template)
+
+        header = f"*A kubernetes deployment is now {status}*"
+        message = f"Deploying to {self.cluster_name} in {self.gcp_project}\n"
+        message += f"See the slack thread under this message for details"
+        message += _generate_progress_bar(self.deployment_count - len(self.rollouts), self.deployment_count)
+
+        block[0]['text']['text'] = header
+        block[1]['text']['text'] = message
+        block[1]['accessory']['image_url'] = self.progress_image
+
+        return block
 
 if __name__ == "__main__":
     env_warning_image = os.environ.get("WARNING_IMAGE",
