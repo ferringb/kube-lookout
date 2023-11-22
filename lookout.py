@@ -272,7 +272,7 @@ class KubeLookout:
 
         block = copy(self.template)
         if self.deployment_count == 0: bar_max = 1
-        else bar_max = self.deployment_count
+        else: bar_max = self.deployment_count
         header = f"*A kubernetes deployment is now {status}*"
         message = f"Deploying to {self.cluster_name} in {self.gcp_project}\n"
         message += f"See the slack thread under this message for details"
