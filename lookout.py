@@ -271,11 +271,12 @@ class KubeLookout:
     def _generate_deployment_thread_block(self, status="in progress"):
 
         block = copy(self.template)
-
+        if self.deployment_count == 0: bar_max = 1
+        else bar_max = self.deployment_count
         header = f"*A kubernetes deployment is now {status}*"
         message = f"Deploying to {self.cluster_name} in {self.gcp_project}\n"
         message += f"See the slack thread under this message for details"
-        message += _generate_progress_bar(self.deployment_count - len(self.rollouts), self.deployment_count)
+        message += _generate_progress_bar(bar_max - len(self.rollouts), bar_max)
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
