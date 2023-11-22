@@ -137,7 +137,7 @@ class KubeLookout:
             self.deployment_thread = resp.data['ts']
 
     def _update_deployment_thread(self):
-        if len(self.rollouts) is 0:
+        if len(self.rollouts) == 0:
             blocks = self._generate_deployment_thread_block("complete")
             resp = self._send_slack_block(blocks, self.slack_channel)
             self.deployment_thread = None
