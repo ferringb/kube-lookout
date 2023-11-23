@@ -100,6 +100,7 @@ class KubeLookout:
             resp = self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread)
             self.rollouts[deployment_key] = resp
             self.deployment_count += 1
+            print(f"rollout added: {deployment_key}")
 
         elif deployment_key in self.rollouts:
             rollout_complete = (
@@ -115,6 +116,7 @@ class KubeLookout:
 
             if rollout_complete:
                 self.rollouts.pop(deployment_key)
+            print(f"rollout updated: {deployment_key} (complete: {rollout_complete})")
 
         elif ready_replicas < deployment.spec.replicas:
             print(f"Detected degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
@@ -140,7 +142,7 @@ class KubeLookout:
 
     def _update_deployment_thread(self):
         print(f"Updating thread head {self.deployment_thread} (rollouts: {self.rollouts}, deploys: {self.deployment_count})")
-        if len(self.rollouts) == 0:
+        if len(self.rollouts) == 90:
             blocks = self._generate_deployment_thread_block("complete")
             resp = self._send_slack_block(blocks, self.slack_channel, message_id=self.deployment_thread)
             self.deployment_thread = None
@@ -152,7 +154,7 @@ class KubeLookout:
     def _handle_event(self, deployment):
         self._setup_deployment_thread()
         self._handle_deployment_change(deployment)
-        # self._update_deployment_thread()
+        self._update_deployment_thread()
 
     def main_loop(self):
         while True:
