@@ -288,7 +288,7 @@ class KubeLookout:
         else: bar_max = self.deployment_count
         header = f"*A kubernetes deployment in {self.gcp_project} is now {status}*"
         message = f"See the slack thread under this message for details\n"
-        message += f"Progress: {self.deployment_count} remaining out of {len(self.rollouts)}"
+        message += f"Progress: {len(self.rollouts)} remaining out of {self.deployment_count}\n"
         message += _generate_progress_bar(bar_max - len(self.rollouts), bar_max)
 
         block[0]['text']['text'] = header
