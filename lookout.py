@@ -141,10 +141,10 @@ class KubeLookout:
             self.deployment_thread = resp
 
     def _update_deployment_thread(self):
-        print(f"Updating thread head {self.deployment_thread[0]} (rollouts: {self.rollouts}, deploys: {self.deployment_count})")
+        print(f"Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
         print(f"Sending update to {self.deployment_thread[1]}")
         try:
-            if len(self.rollouts) == 90:
+            if len(self.rollouts) == 0:
                 blocks = self._generate_deployment_thread_block("complete")
                 resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
                 self.deployment_thread = None
@@ -156,9 +156,10 @@ class KubeLookout:
             print(f"Failed to update slack block: {e}")
 
     def _handle_event(self, deployment):
-        self._setup_deployment_thread()
-        self._handle_deployment_change(deployment)
-        self._update_deployment_thread()
+        if deployment.metadata.namespace != 'kube-system':
+            self._setup_deployment_thread()
+            self._handle_deployment_change(deployment)
+            self._update_deployment_thread()
 
     def main_loop(self):
         while True:
@@ -282,6 +283,7 @@ class KubeLookout:
         block = copy(self.template)
         if self.deployment_count == 0: bar_max = 1
         else: bar_max = self.deployment_count
+        print(f"Thread head bar: deploys={self.deployment_count} rollouts={len(self.rollouts)} (so bar_max={bar_max})")
         header = f"*A kubernetes deployment in {self.gcp_project} is now {status}*"
         message = f"See the slack thread under this message for details\n"
         message += _generate_progress_bar(bar_max - len(self.rollouts), bar_max)
