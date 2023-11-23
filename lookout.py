@@ -88,6 +88,7 @@ class KubeLookout:
         if (metadata.namespace == 'kube-system'):
             return
         deployment_key = f"{metadata.namespace}/{metadata.name}"
+        print(f"Handling deployment of {deployment_key} in thread {self.deployment_thread}")
 
         ready_replicas = 0
         if deployment.status.ready_replicas is not None:
@@ -134,9 +135,11 @@ class KubeLookout:
         if self.deployment_thread is None:
             blocks = self._generate_deployment_thread_block()
             resp = self._send_slack_block(blocks, self.slack_channel)
+            print(f"Started new thread {resp[0]} (rollouts: {self.rollouts})")
             self.deployment_thread = resp[0]
 
     def _update_deployment_thread(self):
+        print(f"Updating thread head {self.deployment_thread} (rollouts: {self.rollouts}, deploys: {self.deployment_count})")
         if len(self.rollouts) == 0:
             blocks = self._generate_deployment_thread_block("complete")
             resp = self._send_slack_block(blocks, self.slack_channel, message_id=self.deployment_thread)
