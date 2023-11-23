@@ -152,7 +152,7 @@ class KubeLookout:
     def _handle_event(self, deployment):
         self._setup_deployment_thread()
         self._handle_deployment_change(deployment)
-        self._update_deployment_thread()
+        # self._update_deployment_thread()
 
     def main_loop(self):
         while True:
