@@ -1,5 +1,6 @@
 import os
 from copy import copy
+import datetime
 
 from kubernetes import client, config, watch
 import slack
@@ -88,7 +89,7 @@ class KubeLookout:
         if (metadata.namespace == 'kube-system'):
             return
         deployment_key = f"{metadata.namespace}/{metadata.name}"
-        print(f"Handling deployment of {deployment_key} in thread {self.deployment_thread[0]}")
+        print(f"{datetime.datetime.now()} Handling deployment of {deployment_key} in thread {self.deployment_thread[0]}")
 
         ready_replicas = 0
         if deployment.status.ready_replicas is not None:
@@ -141,11 +142,10 @@ class KubeLookout:
             self.deployment_thread = resp
 
     def _update_deployment_thread(self):
-        print(f"Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
+        print(f"{datetime.datetime.now()} Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
         if self.deployment_count == 0:
             # Nothing has started yet, too soon to update!
             return
-        print(f"Sending update to {self.deployment_thread[1]}")
         try:
             if len(self.rollouts) == 0:
                 blocks = self._generate_deployment_thread_block("complete")
@@ -286,9 +286,9 @@ class KubeLookout:
         block = copy(self.template)
         if self.deployment_count == 0: bar_max = 1
         else: bar_max = self.deployment_count
-        print(f"Thread head bar: deploys={self.deployment_count} rollouts={len(self.rollouts)} (so bar_max={bar_max})")
         header = f"*A kubernetes deployment in {self.gcp_project} is now {status}*"
         message = f"See the slack thread under this message for details\n"
+        message += f"Progress: {self.deployment_count} remaining out of {len(self.rollouts)}"
         message += _generate_progress_bar(bar_max - len(self.rollouts), bar_max)
 
         block[0]['text']['text'] = header
