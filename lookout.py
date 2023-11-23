@@ -142,6 +142,9 @@ class KubeLookout:
 
     def _update_deployment_thread(self):
         print(f"Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
+        if self.deployment_count == 0:
+            # Nothing has started yet, too soon to update!
+            return
         print(f"Sending update to {self.deployment_thread[1]}")
         try:
             if len(self.rollouts) == 0:
