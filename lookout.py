@@ -88,7 +88,7 @@ class KubeLookout:
         if (metadata.namespace == 'kube-system'):
             return
         deployment_key = f"{metadata.namespace}/{metadata.name}"
-        print(f"Handling deployment of {deployment_key} in thread {self.deployment_thread}")
+        print(f"Handling deployment of {deployment_key} in thread {self.deployment_thread[0]}")
 
         ready_replicas = 0
         if deployment.status.ready_replicas is not None:
@@ -97,7 +97,7 @@ class KubeLookout:
         if deployment_key not in self.rollouts and \
                 deployment.status.updated_replicas is None:
             blocks = self._generate_deployment_rollout_block(deployment)
-            resp = self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread)
+            resp = self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread[0])
             self.rollouts[deployment_key] = resp
             self.deployment_count += 1
             print(f"rollout added: {deployment_key}")
@@ -112,7 +112,7 @@ class KubeLookout:
             self.rollouts[deployment_key] = self._send_slack_block(
                 channel=self.rollouts[deployment_key][1],
                 message_id=self.rollouts[deployment_key][0], blocks=blocks,
-                thread_ts=self.deployment_thread)
+                thread_ts=self.deployment_thread[0])
 
             if rollout_complete:
                 self.rollouts.pop(deployment_key)
@@ -138,21 +138,21 @@ class KubeLookout:
             blocks = self._generate_deployment_thread_block()
             resp = self._send_slack_block(blocks, self.slack_channel)
             print(f"Started new thread {resp[0]} (rollouts: {self.rollouts})")
-            self.deployment_thread = resp[0]
+            self.deployment_thread = resp
 
     def _update_deployment_thread(self):
-        print(f"Updating thread head {self.deployment_thread} (rollouts: {self.rollouts}, deploys: {self.deployment_count})")
-        print(f"Sending update to {self.slack_channel}")
+        print(f"Updating thread head {self.deployment_thread[0]} (rollouts: {self.rollouts}, deploys: {self.deployment_count})")
+        print(f"Sending update to {self.deployment_thread[1]}")
         try:
             if len(self.rollouts) == 90:
                 blocks = self._generate_deployment_thread_block("complete")
-                resp = self._send_slack_block(blocks=blocks, channel=self.slack_channel, message_id=self.deployment_thread)
+                resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
                 self.deployment_thread = None
                 self.deployment_count = 0
             else:
                 blocks = self._generate_deployment_thread_block()
-                resp = self._send_slack_block(blocks=blocks, channel=self.slack_channel, message_id=self.deployment_thread)
-        except SlackApiError as e:
+                resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
+        except Exception as e:
             print(f"Failed to update slack block: {e}")
 
     def _handle_event(self, deployment):
