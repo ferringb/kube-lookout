@@ -142,6 +142,7 @@ class KubeLookout:
 
     def _update_deployment_thread(self):
         print(f"Updating thread head {self.deployment_thread} (rollouts: {self.rollouts}, deploys: {self.deployment_count})")
+        print(f"Sending update to {self.slack_channel}")
         try:
             if len(self.rollouts) == 90:
                 blocks = self._generate_deployment_thread_block("complete")
