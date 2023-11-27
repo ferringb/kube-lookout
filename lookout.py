@@ -114,7 +114,7 @@ class KubeLookout:
             resp = self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread[0])
             self.rollouts[deployment_key] = resp
             self.deployment_count += 1
-            print(f"rollout added: {deployment_key}")
+            print(f"{datetime.datetime.now()} rollout added: {deployment_key}")
 
         elif deployment_key in self.rollouts:
             rollout_complete = (
@@ -136,7 +136,7 @@ class KubeLookout:
                 print(f"rollout failed for {deployment_key}")
                 self.problems += 1
             else:
-                print(f"rollout updated for {deployment_key}")
+                print(f"{datetime.datetime.now()} rollout updated for {deployment_key}")
 
 
         elif ready_replicas < deployment.spec.replicas:
@@ -257,6 +257,7 @@ class KubeLookout:
             block[0]['text']['text'] = f"*{self.gcp_project} deployment " \
                 f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
                 f" is failing: {deployment.status.conditions[-1].message}*"
+            self.problems += 1
         # when rollout is complete, update our image
         if rollout_complete:
             block[1]['accessory']['image_url'] = self.ok_image
