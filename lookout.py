@@ -75,7 +75,7 @@ class KubeLookout:
                 self.slack_key)
 
         if thread_ts and \
-            (datetime.datetime.now().timestamp() - self.thread_refresh) > int(self.deployment_thread[0]):
+            (datetime.datetime.now().timestamp() - self.thread_refresh) > float(self.deployment_thread[0]):
             # The thread is too old!  Refresh the channel with it so it doesn't get lost
             reply_broadcast = True
         else:
@@ -147,7 +147,7 @@ class KubeLookout:
             # self._send_slack_block(blocks, self.slack_channel)
 
     def _setup_deployment_thread(self):
-        if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > int(self.deployment_thread[0]):
+        if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.deployment_thread[0]):
             # Our thread is SO OLD.  Give up on it and start fresh
             blocks = self._generate_deployment_thread_block("failed")
             resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
