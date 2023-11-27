@@ -58,6 +58,7 @@ class KubeLookout:
         self.thread_timeout = thread_timeout
         self.deployment_thread = None
         self.deployment_count = 0
+        self.problems = 0
         self.rollouts = {}
         self.degraded = set()
 
@@ -129,7 +130,14 @@ class KubeLookout:
 
             if rollout_complete:
                 self.rollouts.pop(deployment_key)
-            print(f"rollout updated: {deployment_key} (complete: {rollout_complete})")
+                print(f"rollout complete for {deployment_key}")
+            elif blocks[1]['accessory']['image_url'] == self.warning_image:
+                self.rollouts.pop(deployment_key)
+                print(f"rollout failed for {deployment_key}")
+                self.problems += 1
+            else:
+                print(f"rollout updated for {deployment_key}")
+
 
         elif ready_replicas < deployment.spec.replicas:
             print(f"Detected degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
@@ -149,15 +157,17 @@ class KubeLookout:
     def _setup_deployment_thread(self):
         if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.deployment_thread[0]):
             # Our thread is SO OLD.  Give up on it and start fresh
-            blocks = self._generate_deployment_thread_block("failed")
+            blocks = self._generate_deployment_thread_block("timed out")
             resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
             self.deployment_thread = None
+            self.problems = 0
 
         if self.deployment_thread is None:
             blocks = self._generate_deployment_thread_block()
             resp = self._send_slack_block(blocks, self.slack_channel)
             print(f"Started new thread {resp[0]} (rollouts: {self.rollouts})")
             self.deployment_thread = resp
+            self.problems = 0
 
     def _update_deployment_thread(self):
         print(f"{datetime.datetime.now()} Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
@@ -232,8 +242,9 @@ class KubeLookout:
             f"updated out of " \
             f"{deployment.spec.replicas}, {deployment.status.ready_replicas}" \
             f" ready.\n\n"
-        message += _generate_progress_bar(
-            live_updates, deployment.spec.replicas)
+        if self.problems > 0:
+            message += f"{self.problems} deployments are in trouble"
+        message += _generate_progress_bar(live_updates, deployment.spec.replicas)
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
@@ -248,8 +259,7 @@ class KubeLookout:
                 f" is failing: {deployment.status.conditions[-1].message}*"
         # when rollout is complete, update our image
         if rollout_complete:
-            block[1]['accessory'][
-                'image_url'] = self.ok_image
+            block[1]['accessory']['image_url'] = self.ok_image
         return block
 
     def _generate_deployment_degraded_block(self, deployment):
@@ -271,8 +281,7 @@ class KubeLookout:
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
-        block[1]['accessory'][
-            'image_url'] = self.warning_image
+        block[1]['accessory']['image_url'] = self.warning_image
 
         return block
 
@@ -304,6 +313,7 @@ class KubeLookout:
         block = copy(self.template)
         if self.deployment_count == 0: bar_max = 1
         else: bar_max = self.deployment_count
+        if self.problems > 0: status = "having problems"
         header = f"*A kubernetes deployment in {self.gcp_project} is now {status}*"
         message = f"See the slack thread under this message for details\n"
         message += f"Progress: {len(self.rollouts)} remaining out of {self.deployment_count}\n"
@@ -311,10 +321,10 @@ class KubeLookout:
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
-        if status == "complete":
-            block[1]['accessory']['image_url'] = self.ok_image
-        elif status == "failed":
+        if status == "having problems" or status == "timed out":
             block[1]['accessory']['image_url'] = self.warning_image
+        elif status == "complete":
+            block[1]['accessory']['image_url'] = self.ok_image
         else:
             block[1]['accessory']['image_url'] = self.progress_image
 
