@@ -42,7 +42,8 @@ class KubeLookout:
 
     def __init__(self, warning_image, progress_image, ok_image,
                  slack_key, slack_channel, 
-                 cluster_name, gcp_region, gcp_project):
+                 cluster_name, gcp_region, gcp_project,
+                 thread_refresh, thread_timeout):
         super().__init__()
         self.warning_image = warning_image
         self.ok_image = ok_image
@@ -53,6 +54,8 @@ class KubeLookout:
         self.cluster_name = cluster_name
         self.gcp_region = gcp_region
         self.gcp_project = gcp_project
+        self.thread_refresh = thread_refresh
+        self.thread_timeout = thread_timeout
         self.deployment_thread = None
         self.deployment_count = 0
         self.rollouts = {}
@@ -70,11 +73,20 @@ class KubeLookout:
         if self.slack_client is None:
             self.slack_client = slack.WebClient(
                 self.slack_key)
+
+        if thread_ts and \
+            (datetime.datetime.now().timestamp() - self.thread_refresh) > self.deployment_thread[0]:
+            # The thread is too old!  Refresh the channel with it so it doesn't get lost
+            reply_broadcast = True
+        else:
+            reply_broadcast = False
+
         if message_id is None:
             response = self.slack_client.chat_postMessage(channel=channel,
                                                           blocks=blocks,
                                                           icon_emoji=':kubernetes:',
                                                           thread_ts=thread_ts,
+                                                          reply_broadcast=reply_broadcast,
                                                           unfurl_links='false')
             return response.data['ts'], response.data['channel']
         response = self.slack_client.chat_update(
@@ -135,6 +147,12 @@ class KubeLookout:
             # self._send_slack_block(blocks, self.slack_channel)
 
     def _setup_deployment_thread(self):
+        if (datetime.datetime.now().timestamp() - self.thread_timeout) > self.deployment_thread[0]:
+            # Our thread is SO OLD.  Give up on it and start fresh
+            blocks = self._generate_deployment_thread_block("failed")
+            resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
+            self.deployment_thread = None
+
         if self.deployment_thread is None:
             blocks = self._generate_deployment_thread_block()
             resp = self._send_slack_block(blocks, self.slack_channel)
@@ -295,6 +313,8 @@ class KubeLookout:
         block[1]['text']['text'] = message
         if status == "complete":
             block[1]['accessory']['image_url'] = self.ok_image
+        elif status == "failed":
+            block[1]['accessory']['image_url'] = self.warning_image
         else:
             block[1]['accessory']['image_url'] = self.progress_image
 
@@ -312,10 +332,13 @@ if __name__ == "__main__":
     env_cluster_name = os.environ.get("CLUSTER_NAME", "kubernetes")
     env_gcp_region = os.environ.get("GCP_REGION", "us-west1")
     env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
+    env_thread_refresh = int(os.environ.get("THREAD_REFRESH", 900))
+    env_thread_timeout = int(os.environ.get("THREAD_TIMEOUT", 3600))
     kube_deploy_watch = KubeLookout(env_warning_image,
                                     env_progress_image,
                                     env_ok_image, env_slack_token,
                                     env_slack_channel, env_cluster_name,
-                                    env_gcp_region, env_gcp_project)
+                                    env_gcp_region, env_gcp_project,
+                                    env_thread_refresh, env_thread_timeout)
 
     kube_deploy_watch.main_loop()

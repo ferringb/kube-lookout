@@ -22,6 +22,9 @@ The following ENV variables are used:
 2. SLACK_CHANNEL - Slack channel, defaults to "#robot_dreams"
 3. CLUSTER_NAME - this is prefixed for most messages on slack, defaults to "Kubernetes Cluster"
 4. PROGRESS_IMAGE, OK_IMAGE, WARNING_IMAGE - the URLs of images used for the slack notifications. Defaults to kinda ugly creative commons images, but does the job. (dont use SVGs I learned.)
+5. THREAD_REFRESH - After the deployment thread is this many seconds old, post the update to the channel so the thread is easier to find
+6. THREAD_TIMEOUT - After the deployment thread is this many seconds old, declare it failed.  New deploys after this will start a new thread.
+7. GCP_REGION, GCP_PROJECT - used to generate links to the deployment in the GCP web console
 
 
 ## Screenshots
