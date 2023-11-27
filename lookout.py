@@ -157,6 +157,7 @@ class KubeLookout:
     def _setup_deployment_thread(self):
         if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.deployment_thread[0]):
             # Our thread is SO OLD.  Give up on it and start fresh
+            print(f"Timing out thread {self.deployment_thread[0]} (rollouts: {self.rollouts})")
             blocks = self._generate_deployment_thread_block("timed out")
             resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
             self.deployment_thread = None
@@ -257,6 +258,7 @@ class KubeLookout:
             block[0]['text']['text'] = f"*{self.gcp_project} deployment " \
                 f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
                 f" is failing: {deployment.status.conditions[-1].message}*"
+            print(f"{deployment.metadata.namespace}/{deployment.metadata.name} is troubled: {deployment.status.conditions} (problems: {self.problems})")
             self.problems += 1
         # when rollout is complete, update our image
         if rollout_complete:
