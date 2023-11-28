@@ -250,7 +250,7 @@ class KubeLookout:
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.progress_image
-        self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"])
+        self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"], None)
         # if the deployment status reflects that it is no longer progressing,
         # update the image to reflect that
         if deployment.status.conditions[-1].type == "Progressing" and \
@@ -264,7 +264,7 @@ class KubeLookout:
         # when rollout is complete, update our image
         if rollout_complete:
             block[1]['accessory']['image_url'] = self.ok_image
-            self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"])
+            self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"], None)
         return block
 
     def _generate_deployment_degraded_block(self, deployment):
@@ -310,7 +310,7 @@ class KubeLookout:
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.ok_image
-        self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"])
+        self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"], None)
 
         return block
 
