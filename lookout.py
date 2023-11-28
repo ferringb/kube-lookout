@@ -58,7 +58,7 @@ class KubeLookout:
         self.thread_timeout = thread_timeout
         self.deployment_thread = None
         self.deployment_count = 0
-        self.problems = 0
+        self.problems = {}
         self.rollouts = {}
         self.degraded = set()
 
@@ -134,7 +134,7 @@ class KubeLookout:
             elif blocks[1]['accessory']['image_url'] == self.warning_image:
                 self.rollouts.pop(deployment_key)
                 print(f"rollout failed for {deployment_key}")
-                self.problems += 1
+                self.problems[deployment_key] = True
             else:
                 print(f"{datetime.datetime.now()} rollout updated for {deployment_key}")
 
@@ -161,14 +161,14 @@ class KubeLookout:
             blocks = self._generate_deployment_thread_block("timed out")
             resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
             self.deployment_thread = None
-            self.problems = 0
+            self.problems = {}
 
         if self.deployment_thread is None:
             blocks = self._generate_deployment_thread_block()
             resp = self._send_slack_block(blocks, self.slack_channel)
             print(f"Started new thread {resp[0]} (rollouts: {self.rollouts})")
             self.deployment_thread = resp
-            self.problems = 0
+            self.problems = {}
 
     def _update_deployment_thread(self):
         print(f"{datetime.datetime.now()} Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
@@ -244,12 +244,13 @@ class KubeLookout:
             f"{deployment.spec.replicas}, {deployment.status.ready_replicas}" \
             f" ready.\n\n"
         if self.problems > 0:
-            message += f"{self.problems} deployments are in trouble"
+            message += f"{len(self.problems)} deployments are in trouble"
         message += _generate_progress_bar(live_updates, deployment.spec.replicas)
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.progress_image
+        self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"])
         # if the deployment status reflects that it is no longer progressing,
         # update the image to reflect that
         if deployment.status.conditions[-1].type == "Progressing" and \
@@ -259,10 +260,11 @@ class KubeLookout:
                 f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
                 f" is failing: {deployment.status.conditions[-1].message}*"
             print(f"{deployment.metadata.namespace}/{deployment.metadata.name} is troubled: {deployment.status.conditions} (problems: {self.problems})")
-            self.problems += 1
+            self.problems[f"{deployment.metadata.namespace}/{deployment.metadata.name}"] = True
         # when rollout is complete, update our image
         if rollout_complete:
             block[1]['accessory']['image_url'] = self.ok_image
+            self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"])
         return block
 
     def _generate_deployment_degraded_block(self, deployment):
@@ -285,6 +287,7 @@ class KubeLookout:
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.warning_image
+        self.problems[f"{deployment.metadata.namespace}/{deployment.metadata.name}"] = True
 
         return block
 
@@ -306,8 +309,8 @@ class KubeLookout:
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
-        block[1]['accessory'][
-            'image_url'] = self.ok_image
+        block[1]['accessory']['image_url'] = self.ok_image
+        self.problems.pop([f"{deployment.metadata.namespace}/{deployment.metadata.name}"])
 
         return block
 
@@ -316,7 +319,7 @@ class KubeLookout:
         block = copy(self.template)
         if self.deployment_count == 0: bar_max = 1
         else: bar_max = self.deployment_count
-        if self.problems > 0: status = "having problems"
+        if self.problems: status = "having problems"
         header = f"*A kubernetes deployment in {self.gcp_project} is now {status}*"
         message = f"See the slack thread under this message for details\n"
         message += f"Progress: {len(self.rollouts)} remaining out of {self.deployment_count}\n"
