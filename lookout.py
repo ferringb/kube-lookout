@@ -243,7 +243,7 @@ class KubeLookout:
             f"updated out of " \
             f"{deployment.spec.replicas}, {deployment.status.ready_replicas}" \
             f" ready.\n\n"
-        if self.problems > 0:
+        if self.problems:
             message += f"{len(self.problems)} deployments are in trouble"
         message += _generate_progress_bar(live_updates, deployment.spec.replicas)
 
