@@ -1,9 +1,12 @@
 import os
 from copy import copy
 import datetime
+import time
+import random
 
 from kubernetes import client, config, watch
-import slack
+import slack # https://slack.dev/python-slack-sdk/web/index.html
+from slack_sdk.errors import SlackApiError
 
 def _generate_progress_bar(position, max_value):
     if position is None:
@@ -82,19 +85,24 @@ class KubeLookout:
         else:
             reply_broadcast = False
 
-        if message_id is None:
-            response = self.slack_client.chat_postMessage(channel=channel,
-                                                          blocks=blocks,
-                                                          icon_emoji=':kubernetes:',
-                                                          thread_ts=thread_ts,
-                                                          reply_broadcast=reply_broadcast,
-                                                          unfurl_links='false')
+        try:
+            if message_id is None:
+                response = self.slack_client.chat_postMessage(channel=channel,
+                                                            blocks=blocks,
+                                                            icon_emoji=':kubernetes:',
+                                                            thread_ts=thread_ts,
+                                                            reply_broadcast=reply_broadcast,
+                                                            unfurl_links='false')
+                return response.data['ts'], response.data['channel']
+            response = self.slack_client.chat_update(
+                channel=channel,
+                thread_ts=thread_ts,
+                ts=message_id, blocks=blocks)
             return response.data['ts'], response.data['channel']
-        response = self.slack_client.chat_update(
-            channel=channel,
-            thread_ts=thread_ts,
-            ts=message_id, blocks=blocks)
-        return response.data['ts'], response.data['channel']
+        except SlackApiError as e:
+            print(f"Could not send message to slack API: {e}")
+            if e['error'] == 'ratelimited':
+                time.sleep(random.randrange(1,30))
 
     def _handle_deployment_change(self, deployment):
         metadata = deployment.metadata
@@ -190,6 +198,10 @@ class KubeLookout:
     def _handle_event(self, deployment):
         if deployment.metadata.namespace != 'kube-system':
             self._setup_deployment_thread()
+            if len(self.rollouts) > 15:
+                # slow your roll!  slack is going to start rate-limiting us
+                print("Pausing a moment to reduce the risk of htting slack rate limits")
+                time.sleep(random.randrange(1,10))
             self._handle_deployment_change(deployment)
             self._update_deployment_thread()
 
