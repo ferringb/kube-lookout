@@ -210,10 +210,9 @@ class KubeLookout:
     def _handle_event(self, deployment):
         if deployment.metadata.namespace != 'kube-system':
             self._setup_deployment_thread()
-            if (len(self.rollouts) + len(self.degraded)) > 15:
-                # slow your roll!  slack is going to start rate-limiting us
+            if ((len(self.rollouts) + len(self.degraded)) % 10) == 9:
                 print("Pausing a moment to reduce the risk of htting slack rate limits")
-                time.sleep(random.randrange(1,10))
+                time.sleep(random.randrange(1,5))
             self._handle_deployment_change(deployment)
             self._update_deployment_thread()
 
