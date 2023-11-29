@@ -197,7 +197,7 @@ class KubeLookout:
             return
         try:
             if len(self.rollouts) == 0 and len(self.degraded) == 0:
-                blocks = self._generate_deployment_thread_block("complete")
+                blocks = self._generate_deployment_thread_block("updated")
                 resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
                 self.deployment_thread = None
                 self.deployment_count = 0
@@ -299,7 +299,7 @@ class KubeLookout:
             f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
             f" has become degraded.*"
 
-        ready_replicas = 0 if deployment.status.ready_replicas == 'None' else deployment.status.ready_replicas
+        ready_replicas = 0 if deployment.status.ready_replicas is None else deployment.status.ready_replicas
         message = f"Deployment " \
             f"{deployment.metadata.namespace}/{deployment.metadata.name}" \
             f" has {ready_replicas} ready replicas " \
@@ -338,13 +338,16 @@ class KubeLookout:
 
         return block
 
-    def _generate_deployment_thread_block(self, status="in progress"):
+    def _generate_deployment_thread_block(self, status="updating"):
 
         block = copy(self.template)
         if self.deployment_count == 0: bar_max = 1
         else: bar_max = self.deployment_count
         if self.problems: status = "having problems"
-        header = f"*A kubernetes update in {self.gcp_project} is now {status}*"
+        if bar_max == 1:
+            header = f"*A kubernetes workload in {self.gcp_project} is now {status}*"
+        else:
+            header = f"*Kubernetes workloads in {self.gcp_project} are now {status}*"
         message = f"See the slack thread under this message for details\n"
         message += f"Progress: {len(self.rollouts) + len(self.degraded)} remaining out of {self.deployment_count}\n"
         message += _generate_progress_bar(bar_max - (len(self.rollouts) + len(self.degraded)), bar_max)
@@ -353,7 +356,7 @@ class KubeLookout:
         block[1]['text']['text'] = message
         if status == "having problems" or status == "timed out":
             block[1]['accessory']['image_url'] = self.warning_image
-        elif status == "complete":
+        elif status == "updated":
             block[1]['accessory']['image_url'] = self.ok_image
         else:
             block[1]['accessory']['image_url'] = self.progress_image
