@@ -148,19 +148,25 @@ class KubeLookout:
 
 
         elif ready_replicas < deployment.spec.replicas:
-            print(f"Detected degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
+            deployment_key = f"{deployment.metadata.namespace}/{deployment.metadata.name}"
+            print(f"Detected degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_degraded_block(deployment)
-            self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread[0])
-            self.degraded.add(deployment_key)
+            if self.degraded[deployment_key] and self.degraded[deployment_key][1]:
+                degraded_slack_channel=self.degraded[deployment_key][1]
+            else:
+                degraded_slack_channel=self.slack_channel
+            self.degraded[deployment_key] = self._send_slack_block(
+                blocks, degraded_slack_channel, thread_ts=self.deployment_thread[0])
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
-            print(f"Recovered degraded {deployment.metadata.namespace}/{deployment.metadata.name}" +
+            deployment_key = f"{deployment.metadata.namespace}/{deployment.metadata.name}"
+            print(f"Recovered degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
-            self.degraded.remove(deployment_key)
             blocks = self._generate_deployment_not_degraded_block(deployment)
-            self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread[0])
+            self._send_slack_block(blocks, self.degraded[deployment_key][1], thread_ts=self.deployment_thread[0])
+            self.degraded.remove(deployment_key)
 
     def _setup_deployment_thread(self):
         if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.deployment_thread[0]):
