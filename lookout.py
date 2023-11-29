@@ -63,7 +63,7 @@ class KubeLookout:
         self.deployment_count = 0
         self.problems = {}
         self.rollouts = {}
-        self.degraded = set()
+        self.degraded = {}
 
     def _init_client(self):
         if "KUBERNETES_PORT" in os.environ:
@@ -166,7 +166,7 @@ class KubeLookout:
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_not_degraded_block(deployment)
             self._send_slack_block(blocks, self.degraded[deployment_key][1], thread_ts=self.deployment_thread[0])
-            self.degraded.remove(deployment_key)
+            self.degraded.pop(deployment_key)
 
     def _setup_deployment_thread(self):
         if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.deployment_thread[0]):
