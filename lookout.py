@@ -190,7 +190,8 @@ class KubeLookout:
             self.problems = {}
 
     def _update_deployment_thread(self):
-        print(f"{datetime.datetime.now()} Updating thread head {self.deployment_thread[0]} (rollouts: {len(self.rollouts)}, deploys: {self.deployment_count})")
+        print(f"{datetime.datetime.now()} Updating thread head {self.deployment_thread[0]} " +
+              f"(rollouts: {len(self.rollouts)}, degraded: {len(self.degraded)} deploys: {self.deployment_count})")
         if self.deployment_count == 0:
             # Nothing has started yet, too soon to update!
             return
@@ -209,7 +210,7 @@ class KubeLookout:
     def _handle_event(self, deployment):
         if deployment.metadata.namespace != 'kube-system':
             self._setup_deployment_thread()
-            if len(self.rollouts) > 15:
+            if (len(self.rollouts) + len(self.degraded)) > 15:
                 # slow your roll!  slack is going to start rate-limiting us
                 print("Pausing a moment to reduce the risk of htting slack rate limits")
                 time.sleep(random.randrange(1,10))
@@ -343,10 +344,10 @@ class KubeLookout:
         if self.deployment_count == 0: bar_max = 1
         else: bar_max = self.deployment_count
         if self.problems: status = "having problems"
-        header = f"*A kubernetes deployment in {self.gcp_project} is now {status}*"
+        header = f"*A kubernetes update in {self.gcp_project} is now {status}*"
         message = f"See the slack thread under this message for details\n"
-        message += f"Progress: {len(self.rollouts)} remaining out of {self.deployment_count}\n"
-        message += _generate_progress_bar(bar_max - len(self.rollouts), bar_max)
+        message += f"Progress: {len(self.rollouts) + len(self.degraded)} remaining out of {self.deployment_count}\n"
+        message += _generate_progress_bar(bar_max - (len(self.rollouts) + len(self.degraded)), bar_max)
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
