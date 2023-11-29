@@ -152,7 +152,7 @@ class KubeLookout:
             print(f"Detected degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_degraded_block(deployment)
-            if self.degraded[deployment_key] and self.degraded[deployment_key][1]:
+            if deployment_key in self.degraded and self.degraded[deployment_key][1]:
                 degraded_slack_channel=self.degraded[deployment_key][1]
             else:
                 degraded_slack_channel=self.slack_channel
