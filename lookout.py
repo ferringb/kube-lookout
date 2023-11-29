@@ -44,7 +44,7 @@ class KubeLookout:
     ]
 
     def __init__(self, warning_image, progress_image, ok_image,
-                 slack_key, slack_channel, 
+                 slack_key, slack_deploy_channel, slack_alert_channel,
                  cluster_name, gcp_region, gcp_project,
                  thread_refresh, thread_timeout):
         super().__init__()
@@ -53,7 +53,8 @@ class KubeLookout:
         self.progress_image = progress_image
         self.slack_client = None
         self.slack_key = slack_key
-        self.slack_channel = slack_channel
+        self.slack_deploy_channel = slack_deploy_channel
+        self.slack_alert_channel = slack_alert_channel
         self.cluster_name = cluster_name
         self.gcp_region = gcp_region
         self.gcp_project = gcp_project
@@ -119,7 +120,7 @@ class KubeLookout:
         if deployment_key not in self.rollouts and \
                 deployment.status.updated_replicas is None:
             blocks = self._generate_deployment_rollout_block(deployment)
-            resp = self._send_slack_block(blocks, self.slack_channel, thread_ts=self.deployment_thread[0])
+            resp = self._send_slack_block(blocks, self.slack_deploy_channel, thread_ts=self.deployment_thread[0])
             self.rollouts[deployment_key] = resp
             self.deployment_count += 1
             print(f"{datetime.datetime.now()} rollout added: {deployment_key}")
@@ -148,24 +149,27 @@ class KubeLookout:
 
 
         elif ready_replicas < deployment.spec.replicas:
-            deployment_key = f"{deployment.metadata.namespace}/{deployment.metadata.name}"
             print(f"Detected degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_degraded_block(deployment)
             if deployment_key in self.degraded and self.degraded[deployment_key][1]:
                 degraded_slack_channel=self.degraded[deployment_key][1]
+                message_id=self.degraded[deployment_key][0]
             else:
-                degraded_slack_channel=self.slack_channel
+                degraded_slack_channel=self.slack_alert_channel
+                message_id=None
             self.degraded[deployment_key] = self._send_slack_block(
-                blocks, degraded_slack_channel, thread_ts=self.deployment_thread[0])
+                blocks, degraded_slack_channel, message_id=message_id,
+                thread_ts=self.deployment_thread[0])
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
-            deployment_key = f"{deployment.metadata.namespace}/{deployment.metadata.name}"
             print(f"Recovered degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_not_degraded_block(deployment)
-            self._send_slack_block(blocks, self.degraded[deployment_key][1], thread_ts=self.deployment_thread[0])
+            self._send_slack_block(blocks, self.degraded[deployment_key][1],
+                                   message_id=self.degraded[deployment_key][0],
+                                   thread_ts=self.deployment_thread[0])
             self.degraded.pop(deployment_key)
 
     def _setup_deployment_thread(self):
@@ -179,7 +183,7 @@ class KubeLookout:
 
         if self.deployment_thread is None:
             blocks = self._generate_deployment_thread_block()
-            resp = self._send_slack_block(blocks, self.slack_channel)
+            resp = self._send_slack_block(blocks, self.slack_deploy_channel)
             print(f"Started new thread {resp[0]} (rollouts: {self.rollouts})")
             self.deployment_thread = resp
             self.problems = {}
@@ -362,16 +366,17 @@ if __name__ == "__main__":
     env_ok_image = os.environ.get("OK_IMAGE",
                                   "https://www.rocketlawyer.com/images/ops/ok.png")
     env_slack_token = os.environ["SLACK_TOKEN"]
-    env_slack_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
+    env_slack_deploy_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
+    env_slack_alert_channel = os.environ.get("SLACK_ALERT_CHANNEL", "#robot_dreams")
     env_cluster_name = os.environ.get("CLUSTER_NAME", "kubernetes")
     env_gcp_region = os.environ.get("GCP_REGION", "us-west1")
     env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
     env_thread_refresh = int(os.environ.get("THREAD_REFRESH", 900))
     env_thread_timeout = int(os.environ.get("THREAD_TIMEOUT", 3600))
-    kube_deploy_watch = KubeLookout(env_warning_image,
-                                    env_progress_image,
+    kube_deploy_watch = KubeLookout(env_warning_image, env_progress_image,
                                     env_ok_image, env_slack_token,
-                                    env_slack_channel, env_cluster_name,
+                                    env_slack_deploy_channel, env_slack_alert_channel,
+                                    env_cluster_name,
                                     env_gcp_region, env_gcp_project,
                                     env_thread_refresh, env_thread_timeout)
 
