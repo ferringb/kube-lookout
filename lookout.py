@@ -161,6 +161,7 @@ class KubeLookout:
             self.degraded[deployment_key] = self._send_slack_block(
                 blocks, degraded_slack_channel, message_id=message_id,
                 thread_ts=self.deployment_thread[0])
+            self.deployment_count += 1
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
@@ -194,7 +195,7 @@ class KubeLookout:
             # Nothing has started yet, too soon to update!
             return
         try:
-            if len(self.rollouts) == 0:
+            if len(self.rollouts) == 0 and len(self.degraded) == 0:
                 blocks = self._generate_deployment_thread_block("complete")
                 resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
                 self.deployment_thread = None
