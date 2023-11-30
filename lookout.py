@@ -3,6 +3,7 @@ from copy import copy
 import datetime
 import time
 import random
+from enum import Enum
 
 from kubernetes import client, config, watch
 import slack # https://slack.dev/python-slack-sdk/web/index.html
@@ -19,6 +20,19 @@ def _generate_progress_bar(position, max_value):
     return (filled_char * int(filled_squares)) + (
             empty_char * (20 - int(filled_squares))) + "\n"
 
+# There are really only three states that things can be in
+class KubeStatus(Enum):
+    TIMED_OUT = 1
+    PROGRESSING = 2
+    COMPLETE = 3
+
+# We maintain separate counts (and slack threads) for intentional updates (deployments)
+# vs. things falling over (degraded).
+# Note that we are using "deployment" as a verb to describe a thing we are doing,
+# not as in the kubernetes object type.
+class KubeEvent(Enum):
+    DEPLOYMENT = 1
+    DEGRADED = 2
 
 class KubeLookout:
     template = [
@@ -60,11 +74,12 @@ class KubeLookout:
         self.gcp_project = gcp_project
         self.thread_refresh = thread_refresh
         self.thread_timeout = thread_timeout
-        self.deployment_thread = None
-        self.deployment_count = 0
+        self.thread_heads = { KubeEvent.DEPLOYMENT: None, KubeEvent.DEGRADED: None }
+        self.deployment_count = 0 # total number of deploys currently being tracked, including completed ones
+        self.degraded_count = 0 # total number of degraded apps being tracked, including recovered ones
+        self.deployments = {} # active deploys being tracked
+        self.degraded = {} # active degraded apps being tracked
         self.problems = {}
-        self.rollouts = {}
-        self.degraded = {}
 
     def _init_client(self):
         if "KUBERNETES_PORT" in os.environ:
@@ -80,7 +95,7 @@ class KubeLookout:
                 self.slack_key)
 
         if thread_ts and \
-            (datetime.datetime.now().timestamp() - self.thread_refresh) > float(self.deployment_thread[0]):
+            (datetime.datetime.now().timestamp() - self.thread_refresh) > float(thread_ts):
             # The thread is too old!  Refresh the channel with it so it doesn't get lost
             reply_broadcast = True
         else:
@@ -111,41 +126,44 @@ class KubeLookout:
         if (metadata.namespace == 'kube-system'):
             return
         deployment_key = f"{metadata.namespace}/{metadata.name}"
-        print(f"{datetime.datetime.now()} Handling deployment of {deployment_key} in thread {self.deployment_thread[0]}")
+        print(f"{datetime.datetime.now()} Handling deployment of {deployment_key}")
 
         ready_replicas = 0
         if deployment.status.ready_replicas is not None:
             ready_replicas = deployment.status.ready_replicas
 
-        if deployment_key not in self.rollouts and \
+        if deployment_key not in self.deployments and \
                 deployment.status.updated_replicas is None:
             blocks = self._generate_deployment_rollout_block(deployment)
-            resp = self._send_slack_block(blocks, self.slack_deploy_channel, thread_ts=self.deployment_thread[0])
-            self.rollouts[deployment_key] = resp
+            resp = self._send_slack_block(blocks, self.slack_deploy_channel, thread_ts=self._thread_head_ts(type=KubeEvent.DEPLOYMENT))
+            self.deployments[deployment_key] = resp
             self.deployment_count += 1
             print(f"{datetime.datetime.now()} rollout added: {deployment_key}")
+            self._update_thread_head(type=KubeEvent.DEPLOYMENT)
 
-        elif deployment_key in self.rollouts:
+        elif deployment_key in self.deployments:
             rollout_complete = (
                     deployment.status.updated_replicas ==
                     deployment.status.replicas ==
                     ready_replicas)
             blocks = self._generate_deployment_rollout_block(deployment,
                                                              rollout_complete)
-            self.rollouts[deployment_key] = self._send_slack_block(
-                channel=self.rollouts[deployment_key][1],
-                message_id=self.rollouts[deployment_key][0], blocks=blocks,
-                thread_ts=self.deployment_thread[0])
+            self.deployments[deployment_key] = self._send_slack_block(
+                channel=self.deployments[deployment_key][1],
+                message_id=self.deployments[deployment_key][0], blocks=blocks,
+                thread_ts=self._thread_head_ts(type=KubeEvent.DEPLOYMENT))
 
             if rollout_complete:
-                self.rollouts.pop(deployment_key)
+                self.deployments.pop(deployment_key)
                 print(f"rollout complete for {deployment_key}")
             elif blocks[1]['accessory']['image_url'] == self.warning_image:
-                self.rollouts.pop(deployment_key)
+                self.deployments.pop(deployment_key)
                 print(f"rollout failed for {deployment_key}")
                 self.problems[deployment_key] = True
             else:
                 print(f"{datetime.datetime.now()} rollout updated for {deployment_key}")
+
+            self._update_thread_head(type=KubeEvent.DEPLOYMENT)
 
 
         elif ready_replicas < deployment.spec.replicas:
@@ -160,8 +178,9 @@ class KubeLookout:
                 message_id=None
             self.degraded[deployment_key] = self._send_slack_block(
                 blocks, degraded_slack_channel, message_id=message_id,
-                thread_ts=self.deployment_thread[0])
-            self.deployment_count += 1
+                thread_ts=self._thread_head_ts(type=KubeEvent.DEGRADED))
+            self.degraded_count += 1
+            self._update_thread_head(type=KubeEvent.DEGRADED)
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
@@ -170,51 +189,63 @@ class KubeLookout:
             blocks = self._generate_deployment_not_degraded_block(deployment)
             self._send_slack_block(blocks, self.degraded[deployment_key][1],
                                    message_id=self.degraded[deployment_key][0],
-                                   thread_ts=self.deployment_thread[0])
+                                   thread_ts=self._thread_head_ts(type=KubeEvent.DEGRADED))
             self.degraded.pop(deployment_key)
+            self._update_thread_head(type=KubeEvent.DEGRADED)
 
-    def _setup_deployment_thread(self):
-        if self.deployment_thread and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.deployment_thread[0]):
+    def _thread_head_ts(self, type):
+        # If we have an appropriate thread head for this type of event (either deploy or degraded)
+        # then return the thread_ts (thread timestamp, which acts as message ID).
+        # If the existing thread head is too old, start a new one.
+        # If there is no existing thread head, then start one.
+
+        if self.thread_head[type] and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.thread_head[type][0]):
             # Our thread is SO OLD.  Give up on it and start fresh
-            print(f"Timing out thread {self.deployment_thread[0]} (rollouts: {self.rollouts})")
-            blocks = self._generate_deployment_thread_block("timed out")
-            resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
-            self.deployment_thread = None
+            print(f"{datetime.datetime.now()} Timing out thread {self.self.thread_head[type][0]} " +
+                  f"(rollouts: {self.deployments})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {self.degraded})")
+            blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
+            resp = self._send_slack_block(blocks=blocks, channel=self.self.thread_head[type][1], message_id=self.thread_head[type][0])
+            self.thread_head[type] = None
             self.problems = {}
 
-        if self.deployment_thread is None:
-            blocks = self._generate_deployment_thread_block()
+        if self.thread_head[type] is None:
+            blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
             resp = self._send_slack_block(blocks, self.slack_deploy_channel)
-            print(f"Started new thread {resp[0]} (rollouts: {self.rollouts})")
-            self.deployment_thread = resp
+            print(f"Started new thread {resp[0]} " +
+                f"(rollouts: {self.deployments})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {self.degraded})")
+            self.thread_head[type] = resp
             self.problems = {}
 
-    def _update_deployment_thread(self):
-        print(f"{datetime.datetime.now()} Updating thread head {self.deployment_thread[0]} " +
-              f"(rollouts: {len(self.rollouts)}, degraded: {len(self.degraded)} deploys: {self.deployment_count})")
-        if self.deployment_count == 0:
+        return self.thread_head[type][0]
+
+    def _update_thread_head(self, type):
+        print(f"{datetime.datetime.now()} Updating thread head {self.thread_head[type][0]} " +
+            f"(rollouts: {len(self.deployments)}/{self.deployment_count})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {len(self.degraded)}/{self.degraded_count})")
+        if (self.deployment_count == 0 and type == KubeEvent.DEPLOYMENT) or \
+            (self.degraded_count == 0 and type == KubeEvent.DEGRADED):
             # Nothing has started yet, too soon to update!
             return
+        
         try:
-            if len(self.rollouts) == 0 and len(self.degraded) == 0:
-                blocks = self._generate_deployment_thread_block("updated")
-                resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
-                self.deployment_thread = None
-                self.deployment_count = 0
+            if (type == KubeEvent.DEPLOYMENT and len(self.deployments) == 0) or \
+                (type == KubeEvent.DEGRADED and len(self.degraded) == 0):
+                blocks = self._generate_thread_head_block(type=type, status=KubeStatus.COMPLETE)
+                resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
+                self.thread_head[type] = None
+                if type == KubeEvent.DEPLOYMENT: self.deployment_count = 0
+                else: self.degraded_count = 0
             else:
-                blocks = self._generate_deployment_thread_block()
-                resp = self._send_slack_block(blocks=blocks, channel=self.deployment_thread[1], message_id=self.deployment_thread[0])
+                blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
+                resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
         except Exception as e:
             print(f"Failed to update slack block: {e}")
 
     def _handle_event(self, deployment):
         if deployment.metadata.namespace != 'kube-system':
-            self._setup_deployment_thread()
-            if ((len(self.rollouts) + len(self.degraded)) % 10) == 9:
+            if ((len(self.deployments) + len(self.degraded)) % 10) == 9:
                 print("Pausing a moment to reduce the risk of htting slack rate limits")
                 time.sleep(random.randrange(1,5))
             self._handle_deployment_change(deployment)
-            self._update_deployment_thread()
 
     def main_loop(self):
         while True:
@@ -337,19 +368,33 @@ class KubeLookout:
 
         return block
 
-    def _generate_deployment_thread_block(self, status="updating"):
+    def _generate_thread_head_block(self, type, status):
 
         block = copy(self.template)
-        if self.deployment_count == 0: bar_max = 1
-        else: bar_max = self.deployment_count
-        if self.problems: status = "having problems"
+
+        if type == KubeEvent.DEPLOYMENT and self.deployment_count == 0: bar_max = 1
+        if type == KubeEvent.DEPLOYMENT: bar_max = self.deployment_count
+        elif type == KubeEvent.DEGRADED and self.degraded_count == 0: bar_max = 1
+        else: bar_max = self.degraded_count
+
+        if self.problems: status_message = "having problems"
+        elif status == KubeStatus.TIMED_OUT: status_message = "timed out"
+        elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.PROGRESSING: status_message = "being updated"
+        elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.COMPLETE: status_message = "up to date"
+        elif type == KubeEvent.DEGRADED and status == KubeStatus.PROGRESSING: status_message = "failing healthcheck and restarting"
+        elif type == KubeEvent.DEGRADED and status == KubeStatus.COMPLETE: status_message = "recovered"
+
         if bar_max == 1:
-            header = f"*A kubernetes workload in {self.gcp_project} is now {status}*"
+            header = f"*A kubernetes workload in {self.gcp_project} is {status_message}*"
         else:
-            header = f"*Kubernetes workloads in {self.gcp_project} are now {status}*"
+            header = f"*Kubernetes workloads in {self.gcp_project} are {status_message}*"
         message = f"See the slack thread under this message for details\n"
-        message += f"Progress: {len(self.rollouts) + len(self.degraded)} remaining out of {self.deployment_count}\n"
-        message += _generate_progress_bar(bar_max - (len(self.rollouts) + len(self.degraded)), bar_max)
+        if type == KubeEvent.DEPLOYMENT:
+            message += f"Progress: {len(self.deployments)} remaining out of {self.deployment_count}\n"
+            message += _generate_progress_bar(bar_max - len(self.deployments), bar_max)
+        else:
+            message += f"Progress: {len(self.degraded)} remaining out of {self.degraded_count}\n"
+            message += _generate_progress_bar(bar_max - len(self.degraded), bar_max)
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
