@@ -371,7 +371,7 @@ if __name__ == "__main__":
                                   "https://www.rocketlawyer.com/images/ops/ok.png")
     env_slack_token = os.environ["SLACK_TOKEN"]
     env_slack_deploy_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
-    env_slack_alert_channel = os.environ.get("SLACK_ALERT_CHANNEL", "#robot_dreams")
+    env_slack_alert_channel = os.environ.get("SLACK_ALERT_CHANNEL", env_slack_deploy_channel)
     env_cluster_name = os.environ.get("CLUSTER_NAME", "kubernetes")
     env_gcp_region = os.environ.get("GCP_REGION", "us-west1")
     env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
