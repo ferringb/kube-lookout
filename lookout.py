@@ -74,7 +74,7 @@ class KubeLookout:
         self.gcp_project = gcp_project
         self.thread_refresh = thread_refresh
         self.thread_timeout = thread_timeout
-        self.thread_heads = { KubeEvent.DEPLOYMENT: None, KubeEvent.DEGRADED: None }
+        self.thread_head = { KubeEvent.DEPLOYMENT: None, KubeEvent.DEGRADED: None }
         self.deployment_count = 0 # total number of deploys currently being tracked, including completed ones
         self.degraded_count = 0 # total number of degraded apps being tracked, including recovered ones
         self.deployments = {} # active deploys being tracked
