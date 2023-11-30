@@ -10,8 +10,8 @@ import slack # https://slack.dev/python-slack-sdk/web/index.html
 from slack_sdk.errors import SlackApiError
 
 def _generate_progress_bar(position, max_value):
-    if position is None:
-        position = 0
+    if position is None: position = 0
+    if max_value is None or max_value == 0: max_value = 1
 
     filled_squares = (100 / max_value * position) / 5
 
