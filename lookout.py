@@ -177,11 +177,17 @@ class KubeLookout:
             else:
                 degraded_slack_channel=self.slack_alert_channel
                 message_id=None
+            print("Hang on...")
+            time.sleep(3) # DEBUG
             self.degraded[deployment_key] = self._send_slack_block(
                 blocks, degraded_slack_channel, message_id=message_id,
                 thread_ts=self._thread_head_ts(type=KubeEvent.DEGRADED))
             self.degraded_count += 1
+            print("Hang on...")
+            time.sleep(3) # DEBUG
             self._update_thread_head(type=KubeEvent.DEGRADED)
+            print("Hang on...")
+            time.sleep(3)
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
@@ -232,12 +238,14 @@ class KubeLookout:
         try:
             if (type == KubeEvent.DEPLOYMENT and len(self.deployments) == 0) or \
                 (type == KubeEvent.DEGRADED and len(self.degraded) == 0):
+                print(f"{datetime.datetime.now()} Marking thread complete")
                 blocks = self._generate_thread_head_block(type=type, status=KubeStatus.COMPLETE)
                 resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
                 self.thread_head[type] = None
                 if type == KubeEvent.DEPLOYMENT: self.deployment_count = 0
                 else: self.degraded_count = 0
             else:
+                print(f"{datetime.datetime.now()} Marking thread in progress")
                 blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
                 resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
         except Exception as e:
