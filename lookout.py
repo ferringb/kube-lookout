@@ -178,10 +178,11 @@ class KubeLookout:
             else:
                 degraded_slack_channel=self.slack_alert_channel
                 message_id=None
-            print(f"181 blocks {blocks[0]}")
+            thread_head = self._thread_head_ts(type=KubeEvent.DEGRADED)
+            print(f"182 blocks {blocks[0]}")
             self.degraded[deployment_key] = self._send_slack_block(
                 blocks, degraded_slack_channel, message_id=message_id,
-                thread_ts=self._thread_head_ts(type=KubeEvent.DEGRADED))
+                thread_ts=thread_head)
             self.degraded_count += 1
             self._update_thread_head(type=KubeEvent.DEGRADED)
 
@@ -191,9 +192,10 @@ class KubeLookout:
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_not_degraded_block(deployment)
             print(f"193 blocks {blocks[0]}")
+            thread_head = self._thread_head_ts(type=KubeEvent.DEGRADED)
             self._send_slack_block(blocks, self.degraded[deployment_key][1],
                                    message_id=self.degraded[deployment_key][0],
-                                   thread_ts=self._thread_head_ts(type=KubeEvent.DEGRADED))
+                                   thread_ts=thread_head)
             self.degraded.pop(deployment_key)
             self._update_thread_head(type=KubeEvent.DEGRADED)
 
@@ -354,7 +356,6 @@ class KubeLookout:
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.warning_image
-        self.problems[f"{deployment.metadata.namespace}/{deployment.metadata.name}"] = True
 
         return block
 
@@ -377,7 +378,6 @@ class KubeLookout:
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
         block[1]['accessory']['image_url'] = self.ok_image
-        self.problems.pop(f"{deployment.metadata.namespace}/{deployment.metadata.name}", None)
 
         return block
 
