@@ -135,9 +135,10 @@ class KubeLookout:
 
         if deployment_key not in self.deployments and \
                 deployment.status.updated_replicas is None:
+            thread_head = self._thread_head_ts(type=KubeEvent.DEPLOYMENT)
             blocks = self._generate_deployment_rollout_block(deployment)
             print(f"139 blocks {blocks[0]}")
-            resp = self._send_slack_block(blocks, self.slack_deploy_channel, thread_ts=self._thread_head_ts(type=KubeEvent.DEPLOYMENT))
+            resp = self._send_slack_block(blocks, self.slack_deploy_channel, thread_ts=thread_head)
             self.deployments[deployment_key] = resp
             self.deployment_count += 1
             print(f"{datetime.datetime.now()} rollout added: {deployment_key}")
@@ -148,13 +149,14 @@ class KubeLookout:
                     deployment.status.updated_replicas ==
                     deployment.status.replicas ==
                     ready_replicas)
+            thread_head = self._thread_head_ts(type=KubeEvent.DEPLOYMENT)
             blocks = self._generate_deployment_rollout_block(deployment,
                                                              rollout_complete)
             print(f"153 blocks {blocks[0]}")
             self.deployments[deployment_key] = self._send_slack_block(
                 channel=self.deployments[deployment_key][1],
                 message_id=self.deployments[deployment_key][0], blocks=blocks,
-                thread_ts=self._thread_head_ts(type=KubeEvent.DEPLOYMENT))
+                thread_ts=thread_head)
 
             if rollout_complete:
                 self.deployments.pop(deployment_key)
@@ -171,6 +173,7 @@ class KubeLookout:
         elif ready_replicas < deployment.spec.replicas:
             print(f"Detected degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
+            thread_head = self._thread_head_ts(type=KubeEvent.DEGRADED)
             blocks = self._generate_deployment_degraded_block(deployment)
             if deployment_key in self.degraded and self.degraded[deployment_key][1]:
                 degraded_slack_channel=self.degraded[deployment_key][1]
@@ -178,7 +181,6 @@ class KubeLookout:
             else:
                 degraded_slack_channel=self.slack_alert_channel
                 message_id=None
-            thread_head = self._thread_head_ts(type=KubeEvent.DEGRADED)
             print(f"182 blocks {blocks[0]}")
             self.degraded[deployment_key] = self._send_slack_block(
                 blocks, degraded_slack_channel, message_id=message_id,
@@ -190,9 +192,9 @@ class KubeLookout:
               ready_replicas >= deployment.spec.replicas):
             print(f"{datetime.datetime.now()} Recovered degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
+            thread_head = self._thread_head_ts(type=KubeEvent.DEGRADED)
             blocks = self._generate_deployment_not_degraded_block(deployment)
             print(f"193 blocks {blocks[0]}")
-            thread_head = self._thread_head_ts(type=KubeEvent.DEGRADED)
             self._send_slack_block(blocks, self.degraded[deployment_key][1],
                                    message_id=self.degraded[deployment_key][0],
                                    thread_ts=thread_head)
@@ -209,16 +211,16 @@ class KubeLookout:
         if self.thread_head[type] and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.thread_head[type][0]):
             # Our thread is SO OLD.  Give up on it and start fresh
             print(f"{datetime.datetime.now()} Timing out thread {self.self.thread_head[type][0]} {debug_activity}")
-            blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
-            print(f"211 blocks {blocks[0]}")
-            resp = self._send_slack_block(blocks=blocks, channel=self.self.thread_head[type][1], message_id=self.thread_head[type][0])
+            head_blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
+            print(f"213 blocks {head_blocks[0]}")
+            resp = self._send_slack_block(blocks=head_blocks, channel=self.self.thread_head[type][1], message_id=self.thread_head[type][0])
             self.thread_head[type] = None
             self.problems = {}
 
         if self.thread_head[type] is None:
-            blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
-            print(f"218 blocks {blocks[0]}")
-            resp = self._send_slack_block(blocks, self.slack_deploy_channel)
+            head_blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
+            print(f"220 blocks {head_blocks[0]}")
+            resp = self._send_slack_block(head_blocks, self.slack_deploy_channel)
             print(f"Started new thread {resp[0]} {debug_activity}")
             self.thread_head[type] = resp
             self.problems = {}
