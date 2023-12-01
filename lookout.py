@@ -205,9 +205,9 @@ class KubeLookout:
 
         if self.thread_head[type] and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.thread_head[type][0]):
             # Our thread is SO OLD.  Give up on it and start fresh
-            print(f"{datetime.datetime.now()} Timing out thread {self.self.thread_head[type][0]} {debug_activity}")
+            print(f"{datetime.datetime.now()} Timing out thread {self.thread_head[type][0]} {debug_activity}")
             head_blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
-            resp = self._send_slack_block(blocks=head_blocks, channel=self.self.thread_head[type][1], message_id=self.thread_head[type][0])
+            resp = self._send_slack_block(blocks=head_blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
             self.thread_head[type] = None
             self.problems = {}
 
