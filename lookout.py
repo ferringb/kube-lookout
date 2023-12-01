@@ -171,23 +171,18 @@ class KubeLookout:
             print(f"Detected degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_degraded_block(deployment)
+            print(f"BLOCK: {blocks[0]}")
             if deployment_key in self.degraded and self.degraded[deployment_key][1]:
                 degraded_slack_channel=self.degraded[deployment_key][1]
                 message_id=self.degraded[deployment_key][0]
             else:
                 degraded_slack_channel=self.slack_alert_channel
                 message_id=None
-            print("Hang on...")
-            time.sleep(3) # DEBUG
             self.degraded[deployment_key] = self._send_slack_block(
                 blocks, degraded_slack_channel, message_id=message_id,
                 thread_ts=self._thread_head_ts(type=KubeEvent.DEGRADED))
             self.degraded_count += 1
-            print("Hang on...")
-            time.sleep(3) # DEBUG
             self._update_thread_head(type=KubeEvent.DEGRADED)
-            print("Hang on...")
-            time.sleep(3)
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
