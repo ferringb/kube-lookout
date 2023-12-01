@@ -185,7 +185,7 @@ class KubeLookout:
 
         elif (deployment_key in self.degraded and \
               ready_replicas >= deployment.spec.replicas):
-            print(f"Recovered degraded {deployment_key}" +
+            print(f"{datetime.datetime.now()} Recovered degraded {deployment_key}" +
                   f" {ready_replicas} ready out of {deployment.spec.replicas}")
             blocks = self._generate_deployment_not_degraded_block(deployment)
             self._send_slack_block(blocks, self.degraded[deployment_key][1],
@@ -199,11 +199,11 @@ class KubeLookout:
         # then return the thread_ts (thread timestamp, which acts as message ID).
         # If the existing thread head is too old, start a new one.
         # If there is no existing thread head, then start one.
+        debug_activity = f"(rollouts: {self.deployments})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {self.degraded})"
 
         if self.thread_head[type] and (datetime.datetime.now().timestamp() - self.thread_timeout) > float(self.thread_head[type][0]):
             # Our thread is SO OLD.  Give up on it and start fresh
-            print(f"{datetime.datetime.now()} Timing out thread {self.self.thread_head[type][0]} " +
-                  f"(rollouts: {self.deployments})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {self.degraded})")
+            print(f"{datetime.datetime.now()} Timing out thread {self.self.thread_head[type][0]} {debug_activity}")
             blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
             resp = self._send_slack_block(blocks=blocks, channel=self.self.thread_head[type][1], message_id=self.thread_head[type][0])
             self.thread_head[type] = None
@@ -212,16 +212,18 @@ class KubeLookout:
         if self.thread_head[type] is None:
             blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
             resp = self._send_slack_block(blocks, self.slack_deploy_channel)
-            print(f"Started new thread {resp[0]} " +
-                f"(rollouts: {self.deployments})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {self.degraded})")
+            print(f"Started new thread {resp[0]} {debug_activity}")
             self.thread_head[type] = resp
             self.problems = {}
 
         return self.thread_head[type][0]
 
     def _update_thread_head(self, type):
-        print(f"{datetime.datetime.now()} Updating thread head {self.thread_head[type][0]} " +
-            f"(rollouts: {len(self.deployments)}/{self.deployment_count})" if (type == KubeEvent.DEPLOYMENT) else f"(degraded: {len(self.degraded)}/{self.degraded_count})")
+        if (type == KubeEvent.DEPLOYMENT):
+            debug_activity = f"(rollouts: {len(self.deployments)}/{self.deployment_count})"
+        else:
+            debug_activity = f"(degraded: {len(self.degraded)}/{self.degraded_count})"
+        print(f"{datetime.datetime.now()} Updating thread head {self.thread_head[type][0]} {debug_activity}")
         if (self.deployment_count == 0 and type == KubeEvent.DEPLOYMENT) or \
             (self.degraded_count == 0 and type == KubeEvent.DEGRADED):
             # Nothing has started yet, too soon to update!
@@ -281,7 +283,8 @@ class KubeLookout:
         # spinning down the old -- but it's the logic we usually use
         unavailable = 0 if str(deployment.status.unavailable_replicas) == 'None' else deployment.status.unavailable_replicas
         updated = 0 if str(deployment.status.updated_replicas) == 'None' else deployment.status.updated_replicas
-        print(deployment.metadata.namespace + "/" + deployment.metadata.name + \
+        print(datetime.datetime.now() + " " + \
+              deployment.metadata.namespace + "/" + deployment.metadata.name + \
               " unavailable: " + str(unavailable) + \
               " updated: " + str(updated))
         for condition in deployment.status.conditions:
