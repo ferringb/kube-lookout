@@ -283,7 +283,7 @@ class KubeLookout:
         # spinning down the old -- but it's the logic we usually use
         unavailable = 0 if str(deployment.status.unavailable_replicas) == 'None' else deployment.status.unavailable_replicas
         updated = 0 if str(deployment.status.updated_replicas) == 'None' else deployment.status.updated_replicas
-        print(datetime.datetime.now() + " " + \
+        print(f"{datetime.datetime.now()}" + " " + \
               deployment.metadata.namespace + "/" + deployment.metadata.name + \
               " unavailable: " + str(unavailable) + \
               " updated: " + str(updated))
