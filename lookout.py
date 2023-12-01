@@ -247,7 +247,7 @@ class KubeLookout:
             else:
                 print(f"{datetime.datetime.now()} Marking thread in progress")
                 blocks = self._generate_thread_head_block(type=type, status=KubeStatus.PROGRESSING)
-                print(f"250 blocks {blocks[0]}")
+                print(f"250 blocks {blocks[0]} {self.thread_head[type]}")
                 resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
         except Exception as e:
             print(f"Failed to update slack block: {e}")
