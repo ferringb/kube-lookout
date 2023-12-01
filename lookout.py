@@ -224,10 +224,10 @@ class KubeLookout:
         else:
             debug_activity = f"(degraded: {len(self.degraded)}/{self.degraded_count})"
         print(f"{datetime.datetime.now()} Updating thread head {self.thread_head[type][0]} {debug_activity}")
-        if (self.deployment_count == 0 and type == KubeEvent.DEPLOYMENT) or \
-            (self.degraded_count == 0 and type == KubeEvent.DEGRADED):
-            # Nothing has started yet, too soon to update!
-            return
+        # if (self.deployment_count == 0 and type == KubeEvent.DEPLOYMENT) or \
+        #     (self.degraded_count == 0 and type == KubeEvent.DEGRADED):
+        #     # Nothing has started yet, too soon to update!
+        #     return
         
         try:
             if (type == KubeEvent.DEPLOYMENT and len(self.deployments) == 0) or \
