@@ -403,6 +403,8 @@ class KubeLookout:
             status_message = "unknown"
             status_image = self.warning_image
 
+        print(f"{datetime.datetime.now()} Generating new thread head block with {status_message} (type: {type}, status: {status})")
+
         if bar_max == 1:
             header = f"*A kubernetes workload in {self.gcp_project} is {status_message}*"
         else:
