@@ -57,7 +57,7 @@ class KubeLookout:
         }
     ]
 
-    def __init__(self, warning_image, progress_image, ok_image,
+    def __init__(self, warning_image, progress_image, recovering_image, ok_image,
                  slack_key, slack_deploy_channel, slack_alert_channel,
                  cluster_name, gcp_region, gcp_project,
                  thread_refresh, thread_timeout):
@@ -65,6 +65,7 @@ class KubeLookout:
         self.warning_image = warning_image
         self.ok_image = ok_image
         self.progress_image = progress_image
+        self.recovering_image = recovering_image
         self.slack_client = None
         self.slack_key = slack_key
         self.slack_deploy_channel = slack_deploy_channel
@@ -377,12 +378,27 @@ class KubeLookout:
         elif type == KubeEvent.DEGRADED and self.degraded_count == 0: bar_max = 1
         else: bar_max = self.degraded_count
 
-        if self.problems: status_message = "having problems"
-        elif status == KubeStatus.TIMED_OUT: status_message = "timed out"
-        elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.PROGRESSING: status_message = "being updated"
-        elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.COMPLETE: status_message = "up to date"
-        elif type == KubeEvent.DEGRADED and status == KubeStatus.PROGRESSING: status_message = "failing healthcheck and restarting"
-        elif type == KubeEvent.DEGRADED and status == KubeStatus.COMPLETE: status_message = "recovered"
+        if self.problems:
+            status_message = "having problems"
+            status_image = self.warning_image
+        elif status == KubeStatus.TIMED_OUT:
+            status_message = "timed out"
+            status_image = self.warning_image
+        elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.PROGRESSING:
+            status_message = "being updated"
+            status_image = self.progress_image
+        elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.COMPLETE:
+            status_message = "up to date"
+            status_image = self.ok_image
+        elif type == KubeEvent.DEGRADED and status == KubeStatus.PROGRESSING:
+            status_message = "failing healthcheck and restarting"
+            status_image = self.recovering_image
+        elif type == KubeEvent.DEGRADED and status == KubeStatus.COMPLETE:
+            status_message = "recovered"
+            status_image = self.ok_image
+        else:
+            status_message = "unknown"
+            status_image = self.warning_image
 
         if bar_max == 1:
             header = f"*A kubernetes workload in {self.gcp_project} is {status_message}*"
@@ -398,20 +414,18 @@ class KubeLookout:
 
         block[0]['text']['text'] = header
         block[1]['text']['text'] = message
-        if status == "having problems" or status == "timed out":
-            block[1]['accessory']['image_url'] = self.warning_image
-        elif status == "updated":
-            block[1]['accessory']['image_url'] = self.ok_image
-        else:
-            block[1]['accessory']['image_url'] = self.progress_image
+        block[1]['accessory']['image_url'] = status_image
 
         return block
 
 if __name__ == "__main__":
     env_warning_image = os.environ.get("WARNING_IMAGE",
                                        "https://www.rocketlawyer.com/images/ops/warning.png")
+    # https://www.rocketlawyer.com/images/ops/progress.gif
     env_progress_image = os.environ.get("PROGRESS_IMAGE",
-                                        "https://www.rocketlawyer.com/images/ops/progress.gif")
+                                        "https://64.media.tumblr.com/345127a42a4baf76158920730f808f3b/tumblr_nak5muSmwi1r2geqjo1_500.gifv")
+    env_recovering_image = os.environ.get("RECOVERING_IMAGE",
+                                          "https://64.media.tumblr.com/a1acb16e4b116ae6950d93c086914978/tumblr_n6uulrbQTO1r2geqjo1_500.gifv")
     env_ok_image = os.environ.get("OK_IMAGE",
                                   "https://www.rocketlawyer.com/images/ops/ok.png")
     env_slack_token = os.environ["SLACK_TOKEN"]
@@ -422,7 +436,7 @@ if __name__ == "__main__":
     env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
     env_thread_refresh = int(os.environ.get("THREAD_REFRESH", 900))
     env_thread_timeout = int(os.environ.get("THREAD_TIMEOUT", 3600))
-    kube_deploy_watch = KubeLookout(env_warning_image, env_progress_image,
+    kube_deploy_watch = KubeLookout(env_warning_image, env_progress_image, env_recovering_image,
                                     env_ok_image, env_slack_token,
                                     env_slack_deploy_channel, env_slack_alert_channel,
                                     env_cluster_name,
