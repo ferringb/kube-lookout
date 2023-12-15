@@ -242,7 +242,7 @@ class KubeLookout:
         print(f"{datetime.datetime.now()} Updating thread head {self.thread_head[type][0]} {debug_activity}")
         
         try:
-            if (type == KubeStatus.TIMED_OUT)
+            if (type == KubeStatus.TIMED_OUT):
                 print(f"{datetime.datetime.now()} Marking thread timed out")
                 blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
                 resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
