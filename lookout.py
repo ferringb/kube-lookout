@@ -31,8 +31,8 @@ class KubeStatus(Enum):
 # Note that we are using "deployment" as a verb to describe a thing we are doing,
 # not as in the kubernetes object type.
 class KubeEvent(Enum):
-    DEPLOYMENT = 1
-    DEGRADED = 2
+    DEPLOYMENT = 10
+    DEGRADED = 20
 
 class KubeLookout:
     template = [
@@ -240,12 +240,13 @@ class KubeLookout:
         else:
             debug_activity = f"(degraded: {len(self.degraded)}/{self.degraded_count})"
         print(f"{datetime.datetime.now()} Updating thread head {self.thread_head[type][0]} {debug_activity}")
-        # if (self.deployment_count == 0 and type == KubeEvent.DEPLOYMENT) or \
-        #     (self.degraded_count == 0 and type == KubeEvent.DEGRADED):
-        #     # Nothing has started yet, too soon to update!
-        #     return
         
         try:
+            if (type == KubeStatus.TIMED_OUT)
+                print(f"{datetime.datetime.now()} Marking thread timed out")
+                blocks = self._generate_thread_head_block(type=type, status=KubeStatus.TIMED_OUT)
+                resp = self._send_slack_block(blocks=blocks, channel=self.thread_head[type][1], message_id=self.thread_head[type][0])
+                self.thread_head[type] = None
             if (type == KubeEvent.DEPLOYMENT and len(self.deployments) == 0) or \
                 (type == KubeEvent.DEGRADED and len(self.degraded) == 0):
                 print(f"{datetime.datetime.now()} Marking thread complete")
@@ -262,6 +263,10 @@ class KubeLookout:
             print(f"Failed to update slack block: {e}")
 
     def _handle_event(self, deployment):
+        if (len(self.deployments) + len(self.degraded)) > 1000:
+            # There is no way that we should have this many things going on at once!
+            # We must have lost track of things somewhere
+            raise Exception(f"FATAL: Built up {len(self.deployments)} deployments and {len(self.degraded)} degraded workloads.  Exiting to clear things out.")
         if deployment.metadata.namespace != 'kube-system':
             if ((len(self.deployments) + len(self.degraded)) % 10) == 9:
                 print("Pausing a moment to reduce the risk of htting slack rate limits")
@@ -400,7 +405,7 @@ class KubeLookout:
         if self.problems:
             status_message = "having problems"
             status_image = self.recovering_image
-        elif status == KubeStatus.TIMED_OUT:
+        elif status == KubeStatus.TIMED_OUT
             status_message = "timed out"
             status_image = self.warning_image
         elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.PROGRESSING:
