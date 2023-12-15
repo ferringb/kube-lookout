@@ -102,7 +102,7 @@ class KubeLookout:
             reply_broadcast = False
 
         # in case we hit an error, be prepared to make several attempts
-        attempts = 3
+        attempts = 5
         while attempts:
             try:
                 if message_id is None:
@@ -120,19 +120,20 @@ class KubeLookout:
                     thread_ts=thread_ts,
                     ts=message_id, blocks=blocks)
                 return response.data['ts'], response.data['channel']
-            except SlackApiError as e:
-                print(f"Could not send message to slack API: {e}")
-                if e.response['error'] == 'ratelimited':
-                    attempts -= 1
-                    if attempts:
-                        # From https://api.slack.com/apis/rate-limits --
-                        # Retry-After: HTTP header containing the number of seconds until you can retry
-                        wait_time = float(exception.response.headers["Retry-After"])
-                        print(f"Will retry in {wait_time} seconds")
-                        time.sleep(wait_time)
-                continue
+            # This should use SlackApiError except that just does not seem to work....
+            # falling back to a generic Exception
             except Exception as e:
-                print(f"Unknown exception sending message to slack API: {e}")
+                print(f"Could not send message to slack API: {e}")
+                attempts -= 1
+                # From https://api.slack.com/apis/rate-limits --
+                # Retry-After: HTTP header containing the number of seconds until you can retry
+                if hasattr(e, 'response') and hasattr(e.response, 'headers'):
+                    wait_time = float(e.response.headers["Retry-After"])
+                else:
+                    wait_time = random.randrange(10,20)
+                print(f"Will retry in {wait_time} seconds (attempts remaining: {attempts})")
+                time.sleep(wait_time)
+                continue
 
     def _handle_deployment_change(self, deployment):
         metadata = deployment.metadata
