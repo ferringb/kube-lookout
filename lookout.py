@@ -101,24 +101,38 @@ class KubeLookout:
         else:
             reply_broadcast = False
 
-        try:
-            if message_id is None:
-                response = self.slack_client.chat_postMessage(channel=channel,
-                                                            blocks=blocks,
-                                                            icon_emoji=':kubernetes:',
-                                                            thread_ts=thread_ts,
-                                                            reply_broadcast=reply_broadcast,
-                                                            unfurl_links='false')
+        # in case we hit an error, be prepared to make several attempts
+        attempts = 3
+        while attempts:
+            try:
+                if message_id is None:
+                    # start a new message
+                    response = self.slack_client.chat_postMessage(channel=channel,
+                                                                blocks=blocks,
+                                                                icon_emoji=':kubernetes:',
+                                                                thread_ts=thread_ts,
+                                                                reply_broadcast=reply_broadcast,
+                                                                unfurl_links='false')
+                    return response.data['ts'], response.data['channel']
+                # else update an existing message
+                response = self.slack_client.chat_update(
+                    channel=channel,
+                    thread_ts=thread_ts,
+                    ts=message_id, blocks=blocks)
                 return response.data['ts'], response.data['channel']
-            response = self.slack_client.chat_update(
-                channel=channel,
-                thread_ts=thread_ts,
-                ts=message_id, blocks=blocks)
-            return response.data['ts'], response.data['channel']
-        except SlackApiError as e:
-            print(f"Could not send message to slack API: {e}")
-            if e['error'] == 'ratelimited':
-                time.sleep(random.randrange(1,30))
+            except SlackApiError as e:
+                print(f"Could not send message to slack API: {e}")
+                if e.response['error'] == 'ratelimited':
+                    attempts -= 1
+                    if attempts:
+                        # From https://api.slack.com/apis/rate-limits --
+                        # Retry-After: HTTP header containing the number of seconds until you can retry
+                        wait_time = float(exception.response.headers["Retry-After"])
+                        print(f"Will retry in {wait_time} seconds")
+                        time.sleep(wait_time)
+                continue
+            except Exception as e:
+                print(f"Unknown exception sending message to slack API: {e}")
 
     def _handle_deployment_change(self, deployment):
         metadata = deployment.metadata
