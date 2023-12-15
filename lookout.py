@@ -405,7 +405,7 @@ class KubeLookout:
         if self.problems:
             status_message = "having problems"
             status_image = self.recovering_image
-        elif status == KubeStatus.TIMED_OUT
+        elif status == KubeStatus.TIMED_OUT:
             status_message = "timed out"
             status_image = self.warning_image
         elif type == KubeEvent.DEPLOYMENT and status == KubeStatus.PROGRESSING:
