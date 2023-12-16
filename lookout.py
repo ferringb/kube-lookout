@@ -180,7 +180,10 @@ class KubeLookout:
             else:
                 print(f"{datetime.datetime.now()} rollout updated for {deployment_key}")
 
-            self._update_thread_head(type=KubeEvent.DEPLOYMENT)
+            try:
+                self._update_thread_head(type=KubeEvent.DEPLOYMENT)
+            except Exception as e:
+                print(f"Failed to update deployment: {e}")
 
         elif ready_replicas < deployment.spec.replicas:
             print(f"Detected degraded {deployment_key}" +
