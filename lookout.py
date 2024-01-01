@@ -4,6 +4,8 @@ import datetime
 import time
 import random
 from enum import Enum
+import argparse
+from urllib.parse import urlparse
 
 from kubernetes import client, config, watch
 import slack # https://slack.dev/python-slack-sdk/web/index.html
@@ -446,29 +448,75 @@ class KubeLookout:
 
         return block
 
-if __name__ == "__main__":
-    env_warning_image = os.environ.get("WARNING_IMAGE",
-                                       "https://www.rocketlawyer.com/images/ops/warning.png")
-    # https://www.rocketlawyer.com/images/ops/progress.gif
-    env_progress_image = os.environ.get("PROGRESS_IMAGE",
-                                        "https://64.media.tumblr.com/345127a42a4baf76158920730f808f3b/tumblr_nak5muSmwi1r2geqjo1_500.gifv")
-    env_recovering_image = os.environ.get("RECOVERING_IMAGE",
-                                          "https://64.media.tumblr.com/a1acb16e4b116ae6950d93c086914978/tumblr_n6uulrbQTO1r2geqjo1_500.gifv")
-    env_ok_image = os.environ.get("OK_IMAGE",
-                                  "https://www.rocketlawyer.com/images/ops/ok.png")
-    env_slack_token = os.environ["SLACK_TOKEN"]
-    env_slack_deploy_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
-    env_slack_alert_channel = os.environ.get("SLACK_ALERT_CHANNEL", env_slack_deploy_channel)
-    env_cluster_name = os.environ.get("CLUSTER_NAME", "kubernetes")
-    env_gcp_region = os.environ.get("GCP_REGION", "us-west1")
-    env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
-    env_thread_refresh = int(os.environ.get("THREAD_REFRESH", 900))
-    env_thread_timeout = int(os.environ.get("THREAD_TIMEOUT", 3600))
-    kube_deploy_watch = KubeLookout(env_warning_image, env_progress_image, env_recovering_image,
-                                    env_ok_image, env_slack_token,
-                                    env_slack_deploy_channel, env_slack_alert_channel,
-                                    env_cluster_name,
-                                    env_gcp_region, env_gcp_project,
-                                    env_thread_refresh, env_thread_timeout)
+def make_parser():
+    def add_arg(parser, env_var, *args, **kwargs):
+        val = os.environ.get(env_var)
+        if val:
+            kwargs['default'] = val
+            kwargs['required'] = False
+        elif 'default' in kwargs:
+            kwargs['required'] = False
 
+        return parser.add_argument(*args, **kwargs)
+
+    def positive_int(val):
+        val = int(val)
+        if val <= 0:
+            raise argparse.ArgumentError(f'{val} is not >= 0')
+        return val
+
+    def valid_url(val):
+        url = urlparse(val)
+        if all((url.scheme, url.netloc, url.path)):
+            return val
+        raise argparse.ArgumentError(f'{val} is not a valid URL')
+
+    parser = argparse.ArgumentParser("kube-lookout")
+    k8s_group = parser.add_argument_group(title="Kubernetes")
+    add_arg(k8s_group, "CLUSTER_NAME", "--cluster-name", default="kubernetes")
+
+    slack_group = parser.add_argument_group(title="Slack")
+    add_arg(slack_group, "SLACK_TOKEN", "--slack-token", required=True)
+    add_arg(slack_group, "SLACK_CHANNEL", "--slack-channel", required=True)
+    add_arg(slack_group, "SLACK_ALERT_CHANNEL", "--slack-alert-channel", required=False)
+    add_arg(slack_group, "THREAD_REFRESH", '--thread-refresh', default=900, type=positive_int)
+    add_arg(slack_group, "THREAD_TIMEOUT", "--thread-timeout", default=3600, type=positive_int)
+
+    image_group = parser.add_argument_group(title="Slack Images")
+    add_arg(image_group, "WARNING_IMAGE", "--image-warning", default="https://www.rocketlawyer.com/images/ops/warning.png", required=True, type=valid_url)
+    add_arg(image_group, "PROGRESS_IMAGE", "--image-progress", default="https://64.media.tumblr.com/345127a42a4baf76158920730f808f3b/tumblr_nak5muSmwi1r2geqjo1_500.gifv", required=True, type=valid_url)
+    add_arg(image_group, "RECOVERING_IMAGE", "--image-recovering", default="https://64.media.tumblr.com/a1acb16e4b116ae6950d93c086914978/tumblr_n6uulrbQTO1r2geqjo1_500.gifv", required=True, type=valid_url)
+    add_arg(image_group, "OK_IMAGE", "--image-ok", default="https://www.rocketlawyer.com/images/ops/ok.png", required=True, type=valid_url)
+
+    gcp_group = parser.add_argument_group(title="GCP options")
+    add_arg(gcp_group, "GCP_REGION", "--gcp-project")
+    add_arg(gcp_group, "GCP_REGION", "--gcp-region")
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = make_parser()
+    opts = parser.parse_args()
+    # env_slack_token = os.environ["SLACK_TOKEN"]
+    # env_slack_deploy_channel = os.environ.get("SLACK_CHANNEL", "#robot_dreams")
+    # env_slack_alert_channel = os.environ.get("SLACK_ALERT_CHANNEL", env_slack_deploy_channel)
+    # env_cluster_name = os.environ.get("CLUSTER_NAME", "kubernetes")
+    # env_gcp_region = os.environ.get("GCP_REGION", "us-west1")
+    # env_gcp_project = os.environ.get("GCP_PROJECT", "rl-us")
+    # env_thread_refresh = int(os.environ.get("THREAD_REFRESH", 900))
+    # env_thread_timeout = int(os.environ.get("THREAD_TIMEOUT", 3600))
+    # kube_deploy_watch = KubeLookout(env_warning_image, env_progress_image, env_recovering_image,
+    #                                 env_ok_image, env_slack_token,
+    #                                 env_slack_deploy_channel, env_slack_alert_channel,
+    #                                 env_cluster_name,
+    #                                 env_gcp_region, env_gcp_project,
+    #                                 env_thread_refresh, env_thread_timeout)
+    kube_deploy_watch = KubeLookout(opts.image_warning, opts.image_progress, opts.image_recovering, opts.image_ok,
+                                    opts.slack_token,
+                                    opts.slack_channel,
+                                    opts.slacker_alert_channel if opts.slack_alert_channel is not None else opts.slack_channel,
+                                    opts.cluster_name,
+                                    opts.gcp_region, opts.gcp_project,
+                                    opts.thread_refresh, opts.thread_timeout)
     kube_deploy_watch.main_loop()
